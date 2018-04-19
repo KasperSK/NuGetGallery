@@ -86,5 +86,7 @@ namespace NuGetGallery
         /// <param name="package">The package.</param>
         /// <returns>The list of package owners that are not organizations.</returns>
         IEnumerable<User> GetPackageUserAccountOwners(Package package);
+
+        Task SetRequiredSignerAsync(PackageRegistration registration, User signer);
     }
 }

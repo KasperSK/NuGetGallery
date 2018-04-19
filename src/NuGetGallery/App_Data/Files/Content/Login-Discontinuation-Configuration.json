@@ -1,12 +1,14 @@
 {
   "DiscontinuedForEmailAddresses": [
-    "cannotUsePassword@canUsePassword.com"
+    "cannotUsePassword@canUsePassword.com",
+    "org@nuget.test"
   ],
   "DiscontinuedForDomains": [
     "cannotUsePassword.com"
   ],
   "ExceptionsForEmailAddresses": [
-    "exception@cannotUsePassword.com"
+    "exception@cannotUsePassword.com",
+    "org@nuget.test"
   ],
   "ForceTransformationToOrganizationForEmailAddresses": [
     "organization@cannotUsePassword.com"

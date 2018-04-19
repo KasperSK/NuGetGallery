@@ -795,6 +795,7 @@
     <Compile Include="Extensions\UserExtensions.cs" />
     <Compile Include="Filters\ApiScopeRequiredAttribute.cs" />
     <Compile Include="Filters\UIAuthorizeAttribute.cs" />
+    <Compile Include="Filters\ValidateAjaxAntiForgeryTokenAttribute.cs" />
     <Compile Include="GlobalSuppressions.cs" />
     <Compile Include="Helpers\GravatarHelper.cs" />
     <Compile Include="Helpers\ObfuscationHelper.cs" />
@@ -841,6 +842,9 @@
     <Compile Include="Migrations\201711021733062_ApiKeyOwnerScope.Designer.cs">
       <DependentUpon>201711021733062_ApiKeyOwnerScope.cs</DependentUpon>
     </Compile>
+    <Compile Include="Security\OverwriteRequiredSignerPolicy.cs" />
+    <Compile Include="Security\ControlRequiredSignerPolicy.cs" />
+    <Compile Include="Security\RequiredSignerPolicy.cs" />
     <Compile Include="Security\RequireOrganizationTenantPolicy.cs" />
     <Compile Include="Services\ActionOnNewPackageContext.cs" />
     <Compile Include="Services\ActionRequiringAccountPermissions.cs" />
@@ -849,9 +853,13 @@
     <Compile Include="Services\ActionRequiringReservedNamespacePermissions.cs" />
     <Compile Include="Services\ActionsRequiringPermissions.cs" />
     <Compile Include="Services\AsynchronousPackageValidationInitiator.cs" />
+    <Compile Include="Services\CertificateService.cs" />
+    <Compile Include="Services\CertificateValidator.cs" />
     <Compile Include="Services\CloudBlobFileStorageService.cs" />
     <Compile Include="Services\DeleteAccountService.cs" />
     <Compile Include="Services\IActionRequiringEntityPermissions.cs" />
+    <Compile Include="Services\ICertificateService.cs" />
+    <Compile Include="Services\ICertificateValidator.cs" />
     <Compile Include="Services\IDeleteAccountService.cs" />
     <Compile Include="Services\IFileStorageService.cs" />
     <Compile Include="Services\IContentObjectService.cs" />
@@ -1071,8 +1079,12 @@
     <Compile Include="Telemetry\UserPackageDeleteEvent.cs" />
     <Compile Include="Telemetry\UserPackageDeleteOutcome.cs" />
     <Compile Include="ViewModels\AddOrganizationViewModel.cs" />
+    <Compile Include="ViewModels\CertificatesListViewModel.cs" />
+    <Compile Include="ViewModels\ListCertificateItemViewModel.cs" />
     <Compile Include="ViewModels\GalleryHomeViewModel.cs" />
     <Compile Include="ViewModels\HandleOrganizationMembershipRequestModel.cs" />
+    <Compile Include="ViewModels\ListPackageItemRequiredSignerViewModel.cs" />
+    <Compile Include="ViewModels\SignerViewModel.cs" />
     <Compile Include="WebRole.cs" />
     <Content Include="bin\NuGetGallery.dll.config">
       <SubType>Designer</SubType>
@@ -2063,6 +2075,7 @@
     <Content Include="Views\Authentication\_SigninAssistance.cshtml" />
     <Content Include="Views\Organizations\Add.cshtml" />
     <Content Include="Views\Organizations\HandleOrganizationMembershipRequest.cshtml" />
+    <Content Include="Views\Shared\_AccountCertificates.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <CodeAnalysisDictionary Include="Properties\CodeAnalysisDictionary.xml" />
@@ -2169,6 +2182,32 @@
     </Content>
     <Content Include="Scripts\nugetgallery.js" />
     <Content Include="Scripts\gallery\**\*" />
+    <Content Include="Scripts\gallery\async-file-upload.js" />
+    <Content Include="Scripts\gallery\autocomplete.js" />
+    <Content Include="Scripts\gallery\bootstrap.js" />
+    <Content Include="Scripts\gallery\certificates.js" />
+    <Content Include="Scripts\gallery\clamp.js" />
+    <Content Include="Scripts\gallery\common.js" />
+    <Content Include="Scripts\gallery\d3.v3.js" />
+    <Content Include="Scripts\gallery\jquery-1.12.4.js" />
+    <Content Include="Scripts\gallery\jquery.validate-1.16.0.js" />
+    <Content Include="Scripts\gallery\jquery.validate.unobtrusive-3.2.6.js" />
+    <Content Include="Scripts\gallery\knockout-3.4.2.js" />
+    <Content Include="Scripts\gallery\md5.js" />
+    <Content Include="Scripts\gallery\moment-2.18.1.js" />
+    <Content Include="Scripts\gallery\page-about.js" />
+    <Content Include="Scripts\gallery\page-account.js" />
+    <Content Include="Scripts\gallery\page-add-organization.js" />
+    <Content Include="Scripts\gallery\page-api-keys.js" />
+    <Content Include="Scripts\gallery\page-display-package.js" />
+    <Content Include="Scripts\gallery\page-edit-readme.js" />
+    <Content Include="Scripts\gallery\page-home.js" />
+    <Content Include="Scripts\gallery\page-manage-organization.js" />
+    <Content Include="Scripts\gallery\page-manage-owners.js" />
+    <Content Include="Scripts\gallery\page-manage-packages.js" />
+    <Content Include="Scripts\gallery\page-signin.js" />
+    <Content Include="Scripts\gallery\stats-dimensions.js" />
+    <Content Include="Scripts\gallery\stats-perpackagestatsgraphs.js" />
     <Content Include="Web.config">
       <SubType>Designer</SubType>
     </Content>
@@ -2425,6 +2464,6 @@
       copy "$(ProjectDir)..\Bootstrap\dist\css\bootstrap.css" "$(ProjectDir)Content\gallery\css" &gt;NUL
       copy "$(ProjectDir)..\Bootstrap\dist\css\bootstrap-theme.css" "$(ProjectDir)Content\gallery\css" &gt;NUL
       copy "$(ProjectDir)..\Bootstrap\dist\js\bootstrap.js" "$(ProjectDir)Scripts\gallery" &gt;NUL
-</PreBuildEvent>
+    </PreBuildEvent>
   </PropertyGroup>
 </Project>

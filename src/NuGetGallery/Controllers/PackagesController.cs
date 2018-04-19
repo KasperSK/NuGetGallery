@@ -1783,6 +1783,41 @@ namespace NuGetGallery
             return Redirect(urlFactory(package, /*relativeUrl:*/ true));
         }
 
+        [UIAuthorize]
+        [HttpPost]
+        public virtual async Task<JsonResult> SetRequiredSigner(string id, string username)
+        {
+            var packageRegistration = _packageService.FindPackageRegistrationById(id);
+
+            if (packageRegistration == null)
+            {
+                return Json(HttpStatusCode.NotFound, obj: null);
+            }
+
+            var currentUser = GetCurrentUser();
+
+            if (ActionsRequiringPermissions.ManagePackageRequiredSigner.CheckPermissionsOnBehalfOfAnyAccount(currentUser, packageRegistration) != PermissionsCheckResult.Allowed)
+            {
+                return Json(HttpStatusCode.Forbidden, obj: null);
+            }
+
+            User signer = null;
+
+            if (!string.IsNullOrEmpty(username))
+            {
+                signer = _userService.FindByUsername(username);
+
+                if (signer == null)
+                {
+                    return Json(HttpStatusCode.NotFound, obj: null);
+                }
+            }
+
+            await _packageService.SetRequiredSignerAsync(packageRegistration, signer);
+
+            return Json(HttpStatusCode.OK, obj: null);
+        }
+
         // this methods exist to make unit testing easier
         protected internal virtual PackageArchiveReader CreatePackage(Stream stream)
         {

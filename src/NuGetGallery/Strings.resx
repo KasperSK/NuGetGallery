@@ -842,4 +842,28 @@ If you wish to update the linked Microsoft account you can do so from the accoun
   <data name="AddMember_UserIsOrganization" xml:space="preserve">
     <value>User '{0}' is an organization and cannot be a member of another organization.</value>
   </data>
+  <data name="ValidateCertificate_FileTooLarge" xml:space="preserve">
+    <value>The file exceeds the size limit of {0} bytes.</value>
+  </data>
+  <data name="ValidateCertificate_InvalidEncoding" xml:space="preserve">
+    <value>The file must be a DER encoded binary X.509 certificate.</value>
+  </data>
+  <data name="ValidateCertificate_InvalidFileLength" xml:space="preserve">
+    <value>The file length is invalid.</value>
+  </data>
+  <data name="ValidateCertificate_InvalidFileType" xml:space="preserve">
+    <value>The file extension must be {0}.</value>
+  </data>
+  <data name="ValidateCertificate_InvalidStream" xml:space="preserve">
+    <value>The file stream is invalid.</value>
+  </data>
+  <data name="ValidateCertificate_StreamMustBeSeekable" xml:space="preserve">
+    <value>The file stream must be seekable.</value>
+  </data>
+  <data name="ArgumentCannotBeNullOrEmpty" xml:space="preserve">
+    <value>The argument cannot be null or empty.</value>
+  </data>
+  <data name="CertificateDoesNotExist" xml:space="preserve">
+    <value>The certificate does not exist.</value>
+  </data>
 </root>

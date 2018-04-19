@@ -485,6 +485,111 @@ namespace NuGetGallery
             return GetRouteLink(url, RouteName.UploadPackageProgress, relativeUrl);
         }
 
+        public static string UserCertificates(this UrlHelper url, bool relativeUrl = true)
+        {
+            return GetRouteLink(url, RouteName.UserCertificates, relativeUrl);
+        }
+
+        public static string UserCertificate(this UrlHelper url, string thumbprint, bool relativeUrl = true)
+        {
+            return GetRouteLink(
+                url,
+                RouteName.UserCertificate,
+                relativeUrl,
+                routeValues: new RouteValueDictionary
+                {
+                    { "thumbprint", thumbprint }
+                });
+        }
+
+        public static string OrganizationCertificate(this UrlHelper url, string accountName, string thumbprint, bool relativeUrl = true)
+        {
+            return GetRouteLink(
+                url,
+                RouteName.OrganizationCertificate,
+                relativeUrl,
+                new RouteValueDictionary
+                {
+                    { "accountName", accountName },
+                    { "thumbprint", thumbprint }
+                });
+        }
+
+        public static string OrganizationCertificates(this UrlHelper url, string accountName, bool relativeUrl = true)
+        {
+            return GetRouteLink(
+                url,
+                RouteName.OrganizationCertificates,
+                relativeUrl,
+                routeValues: new RouteValueDictionary
+                {
+                    { "accountName", accountName }
+                });
+        }
+
+        public static RouteUrlTemplate<string> UserCertificateTemplate(
+            this UrlHelper url,
+            bool relativeUrl = true)
+        {
+            var routesGenerator = new Dictionary<string, Func<string, object>>
+            {
+                { "thumbprint", x => x }
+            };
+
+            Func<RouteValueDictionary, string> linkGenerator = rv => GetRouteLink(
+                url,
+                RouteName.UserCertificate,
+                relativeUrl,
+                routeValues: rv);
+
+            return new RouteUrlTemplate<string>(linkGenerator, routesGenerator);
+        }
+
+        public static RouteUrlTemplate<string> OrganizationCertificateTemplate(
+            this UrlHelper url,
+            string accountName,
+            bool relativeUrl = true)
+        {
+            var routesGenerator = new Dictionary<string, Func<string, object>>
+            {
+                { "accountName", x => accountName },
+                { "thumbprint", x => x }
+            };
+
+            Func<RouteValueDictionary, string> linkGenerator = rv => GetRouteLink(
+                url,
+                RouteName.OrganizationCertificate,
+                relativeUrl,
+                routeValues: rv);
+
+            return new RouteUrlTemplate<string>(linkGenerator, routesGenerator);
+        }
+
+        /// <summary>
+        /// Initializes a package registration link that can be resolved at a later time.
+        /// 
+        /// Callers should only use this API if they need to generate many links, such as the ManagePackages view
+        /// does. This template reduces the calls to RouteCollection.GetVirtualPath which can be expensive. Callers
+        /// that only need a single link should call Url.Package instead.
+        public static RouteUrlTemplate<IPackageVersionModel> SetRequiredSignerTemplate(
+            this UrlHelper url,
+            bool relativeUrl = true)
+        {
+            var routesGenerator = new Dictionary<string, Func<IPackageVersionModel, object>>
+            {
+                { "id", p => p.Id },
+                { "username", p => "{username}" }
+            };
+
+            Func<RouteValueDictionary, string> linkGenerator = rv => GetRouteLink(
+                url,
+                RouteName.SetRequiredSigner,
+                relativeUrl,
+                routeValues: rv);
+
+            return new RouteUrlTemplate<IPackageVersionModel>(linkGenerator, routesGenerator);
+        }
+
         public static string User(
             this UrlHelper url,
             User user,
@@ -1175,7 +1280,7 @@ namespace NuGetGallery
                 {
                     { "provider", providerName },
                     { "returnUrl", returnUrl }
-                }, 
+                },
                 interceptReturnUrl: false);
         }
 

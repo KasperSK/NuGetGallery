@@ -460,6 +460,15 @@ namespace NuGetGallery {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The argument cannot be null or empty..
+        /// </summary>
+        public static string ArgumentCannotBeNullOrEmpty {
+            get {
+                return ResourceManager.GetString("ArgumentCannotBeNullOrEmpty", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The &apos;{0}&apos; authentication provider is disabled and cannot be used to authenticate
         ///.
         /// </summary>
@@ -529,6 +538,15 @@ namespace NuGetGallery {
         public static string CannotRemoveOnlyLoginCredential {
             get {
                 return ResourceManager.GetString("CannotRemoveOnlyLoginCredential", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The certificate does not exist..
+        /// </summary>
+        public static string CertificateDoesNotExist {
+            get {
+                return ResourceManager.GetString("CertificateDoesNotExist", resourceCulture);
             }
         }
         
@@ -2035,6 +2053,60 @@ namespace NuGetGallery {
         public static string UserPackageDeleteSupportRequestMessage {
             get {
                 return ResourceManager.GetString("UserPackageDeleteSupportRequestMessage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The file exceeds the size limit of {0} bytes..
+        /// </summary>
+        public static string ValidateCertificate_FileTooLarge {
+            get {
+                return ResourceManager.GetString("ValidateCertificate_FileTooLarge", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The file must be a DER encoded binary X.509 certificate..
+        /// </summary>
+        public static string ValidateCertificate_InvalidEncoding {
+            get {
+                return ResourceManager.GetString("ValidateCertificate_InvalidEncoding", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The file length is invalid..
+        /// </summary>
+        public static string ValidateCertificate_InvalidFileLength {
+            get {
+                return ResourceManager.GetString("ValidateCertificate_InvalidFileLength", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The file extension must be {0}..
+        /// </summary>
+        public static string ValidateCertificate_InvalidFileType {
+            get {
+                return ResourceManager.GetString("ValidateCertificate_InvalidFileType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The file stream is invalid..
+        /// </summary>
+        public static string ValidateCertificate_InvalidStream {
+            get {
+                return ResourceManager.GetString("ValidateCertificate_InvalidStream", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The file stream must be seekable..
+        /// </summary>
+        public static string ValidateCertificate_StreamMustBeSeekable {
+            get {
+                return ResourceManager.GetString("ValidateCertificate_StreamMustBeSeekable", resourceCulture);
             }
         }
         

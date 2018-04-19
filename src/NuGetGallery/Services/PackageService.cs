@@ -707,5 +707,35 @@ namespace NuGetGallery
                 await _packageRegistrationRepository.CommitChangesAsync();
             }
         }
+
+        public async Task SetRequiredSignerAsync(PackageRegistration registration, User signer)
+        {
+            if (registration == null)
+            {
+                throw new ArgumentNullException(nameof(registration));
+            }
+
+            var isCommitRequired = false;
+
+            if (signer == null)
+            {
+                registration.RequiredSigners.Clear();
+
+                isCommitRequired = true;
+            }
+            else if (!registration.RequiredSigners.Contains(signer))
+            {
+                registration.RequiredSigners.Clear();
+
+                isCommitRequired = true;
+
+                registration.RequiredSigners.Add(signer);
+            }
+
+            if (isCommitRequired)
+            {
+                await _packageRepository.CommitChangesAsync();
+            }
+        }
     }
 }

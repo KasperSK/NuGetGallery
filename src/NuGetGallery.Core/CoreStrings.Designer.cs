@@ -61,6 +61,15 @@ namespace NuGetGallery {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The argument cannot be null or empty..
+        /// </summary>
+        public static string ArgumentCannotBeNullOrEmpty {
+            get {
+                return ResourceManager.GetString("ArgumentCannotBeNullOrEmpty", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Unable to write audit record: &apos;{0}&apos;. Record already exists..
         /// </summary>
         public static string CloudAuditingService_DuplicateAuditRecord {

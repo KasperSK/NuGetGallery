@@ -5,9 +5,12 @@ using System;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using System.Web;
 using System.Web.Mvc;
 using NuGetGallery.Authentication;
 using NuGetGallery.Filters;
+using NuGetGallery.Helpers;
+using NuGetGallery.Security;
 
 namespace NuGetGallery
 {
@@ -34,18 +37,26 @@ namespace NuGetGallery
 
         public ITelemetryService TelemetryService { get; }
 
+        public ISecurityPolicyService SecurityPolicyService { get; }
+
+        public ICertificateService CertificateService { get; }
+
         public AccountsController(
             AuthenticationService authenticationService,
             ICuratedFeedService curatedFeedService,
             IMessageService messageService,
             IUserService userService,
-            ITelemetryService telemetryService)
+            ITelemetryService telemetryService,
+            ISecurityPolicyService securityPolicyService,
+            ICertificateService certificateService)
         {
             AuthenticationService = authenticationService ?? throw new ArgumentNullException(nameof(authenticationService));
             CuratedFeedService = curatedFeedService ?? throw new ArgumentNullException(nameof(curatedFeedService));
             MessageService = messageService ?? throw new ArgumentNullException(nameof(messageService));
             UserService = userService ?? throw new ArgumentNullException(nameof(userService));
             TelemetryService = telemetryService ?? throw new ArgumentNullException(nameof(telemetryService));
+            SecurityPolicyService = securityPolicyService ?? throw new ArgumentNullException(nameof(securityPolicyService));
+            CertificateService = certificateService ?? throw new ArgumentNullException(nameof(certificateService));
         }
 
         public abstract string AccountAction { get; }
@@ -311,6 +322,87 @@ namespace NuGetGallery
             model.ChangeNotifications = model.ChangeNotifications ?? new ChangeNotificationsViewModel();
             model.ChangeNotifications.EmailAllowed = account.EmailAllowed;
             model.ChangeNotifications.NotifyPackagePushed = account.NotifyPackagePushed;
+        }
+
+        protected async Task<JsonResult> AddCertificateAsync(
+            HttpPostedFileBase uploadFile,
+            User account)
+        {
+            if (uploadFile == null)
+            {
+                // TODO fix string
+                ModelState.AddModelError(string.Empty, Strings.UploadFileIsRequired);
+
+                return Json(HttpStatusCode.BadRequest, new[] { Strings.UploadFileIsRequired });
+            }
+
+            Certificate certificate;
+
+            using (var uploadStream = uploadFile.InputStream)
+            {
+                try
+                {
+                    certificate = await CertificateService.AddCertificateAsync(uploadFile);
+                }
+                catch (Exception ex)
+                {
+                    ex.Log();
+
+                    ModelState.AddModelError(string.Empty, ex.Message);
+
+                    return Json(HttpStatusCode.BadRequest, new[] { ex.Message });
+                }
+            }
+
+            try
+            {
+                await CertificateService.ActivateCertificateAsync(certificate.Thumbprint, account);
+            }
+            catch (System.Web.Http.HttpResponseException ex)
+            {
+                ex.Log();
+
+                ModelState.AddModelError(string.Empty, "The certificate already exists.");
+
+                return Json(ex.Response.StatusCode, new { certificate.Thumbprint });
+            }
+            catch (Exception ex)
+            {
+                ex.Log();
+
+                ModelState.AddModelError(string.Empty, ex.Message);
+
+                return Json(HttpStatusCode.BadRequest, new[] { ex.Message });
+            }
+
+            return Json(HttpStatusCode.Created, new { certificate.Thumbprint });
+        }
+
+        protected JsonResult GetCertificate(string thumbprint, User account, RouteUrlTemplate<string> template)
+        {
+            var certificates = CertificateService.GetActiveCertificates(account)
+                .Where(certificate => certificate.Thumbprint == thumbprint)
+                .Select(certificate =>
+                {
+                    var deleteUrl = template.Resolve(certificate.Thumbprint);
+
+                    return new ListCertificateItemViewModel(certificate, deleteUrl);
+                });
+
+            return Json(HttpStatusCode.OK, certificates, JsonRequestBehavior.AllowGet);
+        }
+
+        protected JsonResult GetCertificates(User account, RouteUrlTemplate<string> template)
+        {
+            var certificates = CertificateService.GetActiveCertificates(account)
+                .Select(certificate =>
+                {
+                    var deleteUrl = template.Resolve(certificate.Thumbprint);
+
+                    return new ListCertificateItemViewModel(certificate, deleteUrl);
+                });
+
+            return Json(HttpStatusCode.OK, certificates, JsonRequestBehavior.AllowGet);
         }
     }
 }

@@ -201,4 +201,7 @@
     <value>The package manifest contains invalid metadata elements: '{0}'</value>
     <comment>{0} is a comma-delimited list of invalid metadata element names.</comment>
   </data>
+  <data name="ArgumentCannotBeNullOrEmpty" xml:space="preserve">
+    <value>The argument cannot be null or empty.</value>
+  </data>
 </root>

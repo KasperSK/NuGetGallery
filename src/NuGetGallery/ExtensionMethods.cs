@@ -481,6 +481,11 @@ namespace NuGetGallery
             return user;
         }
 
+        public static bool Is(this HttpRequestBase request, HttpVerbs verb)
+        {
+            return string.Equals(request.HttpMethod, verb.ToString(), StringComparison.InvariantCultureIgnoreCase);
+        }
+
         private static User LoadUser(IOwinContext context)
         {
             var principal = context.Authentication.User;

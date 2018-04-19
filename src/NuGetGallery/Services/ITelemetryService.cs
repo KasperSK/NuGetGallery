@@ -47,6 +47,12 @@ namespace NuGetGallery
         /// </summary>
         void TrackUserPackageDeleteExecuted(int packageKey, string packageId, string packageVersion, ReportPackageReason reason, bool success);
 
+        void TrackCertificateAdded(string thumbprint);
+
+        void TrackCertificateActivated(string thumbprint);
+
+        void TrackCertificateDeactivated(string thumbprint);
+
         /// <summary>
         /// A telemetry event emitted when a user requests transformation of their account into an organization.
         /// </summary>

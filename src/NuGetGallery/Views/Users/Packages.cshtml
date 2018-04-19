@@ -96,6 +96,7 @@
                         <th class="hidden-xs"><span class="hidden">Package Icon</span></th>
                         <th>Package ID</th>
                         <th>Owners</th>
+                        <th>Signing Owner</th>
                         <th>Downloads</th>
                         <th>Latest Version</th>
                         <th><span class="hidden">Icon</span></th>
@@ -122,6 +123,18 @@
                                 <span class="ms-noWrap" data-bind="text: '+' + ($index() - 1)"></span>
                                 <!-- /ko -->
                             </span>
+                        </td>
+                        <td class="align-middle">
+                            <select class="form-control"
+                                    aria-label="Select the signing owner"
+                                    data-bind="options: AllSigners,
+                                    optionsText: 'OptionText',
+                                    optionsValue: 'Username',
+                                    enable: CanEditRequiredSigner,
+                                    visible: ShowRequiredSigner,
+                                    value: $data.GetRequiredSigner(),
+                                    event: { change: $data.SetRequiredSigner },
+                                    attr: { title: RequiredSignerMessage }"></select>
                         </td>
                         <td class="align-middle text-nowrap">
                             <span data-bind="text: FormattedDownloadCount"></span>
@@ -262,6 +275,7 @@
     private RouteUrlTemplate<IPackageVersionModel> editUrlTemplate;
     private RouteUrlTemplate<IPackageVersionModel> manageOwnersUrlTemplate;
     private RouteUrlTemplate<IPackageVersionModel> deleteUrlTemplate;
+    private RouteUrlTemplate<IPackageVersionModel> setRequiredSignerUrlTemplate;
 
     private RouteUrlTemplate<string> searchUrlTemplate;
 
@@ -269,7 +283,7 @@
     private RouteUrlTemplate<OwnerRequestsListItemViewModel> rejectUrlTemplate;
     private RouteUrlTemplate<OwnerRequestsListItemViewModel> cancelUrlTemplate;
 
-    dynamic GetSerializablePackage(ListPackageItemViewModel p)
+    dynamic GetSerializablePackage(ListPackageItemRequiredSignerViewModel p)
     {
         if (packageUrlTemplate == null)
         {
@@ -291,12 +305,21 @@
             deleteUrlTemplate = Url.DeletePackageTemplate();
         }
 
+        if (setRequiredSignerUrlTemplate == null)
+        {
+            setRequiredSignerUrlTemplate = Url.SetRequiredSignerTemplate();
+        }
+
         return new
         {
             Id = p.Id.Abbreviate(40),
             Owners = GetSerializableOwners(p.Owners),
             p.TotalDownloadCount,
             LatestVersion = p.FullVersion.Abbreviate(15),
+            RequiredSigner = GetSerializableSigner(p.RequiredSigner),
+            p.RequiredSignerMessage,
+            AllSigners = GetSerializableSigners(p.AllSigners),
+            SetRequiredSignerUrl = setRequiredSignerUrlTemplate.Resolve(p),
             PackageIconUrl = PackageHelper.ShouldRenderUrl(p.IconUrl) ? p.IconUrl : null,
             PackageUrl = packageUrlTemplate.Resolve(p),
             EditUrl = editUrlTemplate.Resolve(p),
@@ -304,7 +327,9 @@
             DeleteUrl = deleteUrlTemplate.Resolve(p),
             CanEdit = p.CanEdit,
             CanManageOwners = p.CanManageOwners,
-            CanDelete = p.CanUnlistOrRelist
+            CanDelete = p.CanUnlistOrRelist,
+            p.CanEditRequiredSigner,
+            p.ShowRequiredSigner
         };
     }
 
@@ -380,6 +405,26 @@
             TrimmedUsername = user.Username.Abbreviate(15),
             ProfileUrl = userUrlTemplate.Resolve(user),
             IsOrganization = user is Organization
+        };
+    }
+
+    dynamic GetSerializableSigners(IEnumerable<SignerViewModel> signers)
+    {
+        return signers.Select(signer => GetSerializableSigner(signer));
+    }
+
+    dynamic GetSerializableSigner(SignerViewModel signer)
+    {
+        if (signer == null)
+        {
+            return null;
+        }
+
+        return new
+        {
+            signer.Id,
+            signer.Username,
+            OptionText = signer.DisplayText
         };
     }
 }

@@ -120,5 +120,25 @@ namespace NuGetGallery
         public static ActionRequiringAccountPermissions ManageMembership =
             new ActionRequiringAccountPermissions(
                 accountPermissionsRequirement: RequireOwnerOrSiteAdminOrOrganizationAdmin);
+
+        /// <summary>
+        /// The action of viewing a certificate.
+        /// </summary>
+        public static ActionRequiringAccountPermissions ViewCertificate =
+            new ActionRequiringAccountPermissions(RequireOwnerOrOrganizationMember);
+
+        /// <summary>
+        /// The action of activating or deactivating a certificate.
+        /// </summary>
+        public static ActionRequiringAccountPermissions ManageCertificate =
+            new ActionRequiringAccountPermissions(RequireOwnerOrOrganizationAdmin);
+
+        /// <summary>
+        /// The action of changing a package's required signer.
+        /// </summary>
+        public static ActionRequiringPackagePermissions ManagePackageRequiredSigner =
+             new ActionRequiringPackagePermissions(
+                accountOnBehalfOfPermissionsRequirement: RequireOwnerOrOrganizationMember,
+                packageRegistrationPermissionsRequirement: PermissionsRequirement.Owner);
     }
 }

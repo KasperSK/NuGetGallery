@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using System.Web;
 using System.Web.Mvc;
 using NuGetGallery.Areas.Admin;
 using NuGetGallery.Areas.Admin.Models;
@@ -15,6 +16,7 @@ using NuGetGallery.Authentication;
 using NuGetGallery.Configuration;
 using NuGetGallery.Filters;
 using NuGetGallery.Infrastructure.Authentication;
+using NuGetGallery.Security;
 
 namespace NuGetGallery
 {
@@ -39,8 +41,17 @@ namespace NuGetGallery
             ICredentialBuilder credentialBuilder,
             IDeleteAccountService deleteAccountService,
             ISupportRequestService supportRequestService,
-            ITelemetryService telemetryService)
-            : base(authService, feedsQuery, messageService, userService, telemetryService)
+            ITelemetryService telemetryService,
+            ISecurityPolicyService securityPolicyService,
+            ICertificateService certificateService)
+            : base(
+                  authService,
+                  feedsQuery,
+                  messageService,
+                  userService,
+                  telemetryService,
+                  securityPolicyService,
+                  certificateService)
         {
             _packageService = packageService ?? throw new ArgumentNullException(nameof(packageService));
             _packageOwnerRequestService = packageOwnerRequestService ?? throw new ArgumentNullException(nameof(packageOwnerRequestService));
@@ -443,11 +454,11 @@ namespace NuGetGallery
             var packages = _packageService.FindPackagesByAnyMatchingOwner(currentUser, includeUnlisted: true);
             var listedPackages = packages
                 .Where(p => p.Listed)
-                .Select(p => new ListPackageItemViewModel(p, currentUser)).OrderBy(p => p.Id)
+                .Select(p => new ListPackageItemRequiredSignerViewModel(p, currentUser, SecurityPolicyService)).OrderBy(p => p.Id)
                 .ToList();
             var unlistedPackages = packages
                 .Where(p => !p.Listed)
-                .Select(p => new ListPackageItemViewModel(p, currentUser)).OrderBy(p => p.Id)
+                .Select(p => new ListPackageItemRequiredSignerViewModel(p, currentUser, SecurityPolicyService)).OrderBy(p => p.Id)
                 .ToList();
 
             // find all received ownership requests
@@ -835,6 +846,54 @@ namespace NuGetGallery
             var credentialViewModel = AuthenticationService.DescribeCredential(cred);
 
             return Json(new ApiKeyViewModel(credentialViewModel));
+        }
+
+        [AcceptVerbs(HttpVerbs.Get | HttpVerbs.Post)]
+        [UIAuthorize]
+        [ValidateAjaxAntiForgeryToken(HttpVerbs.Post)]
+        [RequiresAccountConfirmation("add or get certificates")]
+        public virtual async Task<JsonResult> AddOrGetCertificates(HttpPostedFileBase uploadFile)
+        {
+            var currentUser = GetCurrentUser();
+
+            if (currentUser == null || currentUser.IsDeleted)
+            {
+                return Json(HttpStatusCode.Unauthorized, obj: null);
+            }
+
+            if (Request.Is(HttpVerbs.Post))
+            {
+                return await AddCertificateAsync(uploadFile, currentUser);
+            }
+
+            var template = Url.UserCertificateTemplate();
+
+            return GetCertificates(currentUser, template);
+        }
+
+        [AcceptVerbs(HttpVerbs.Get | HttpVerbs.Delete)]
+        [UIAuthorize]
+        [ValidateAjaxAntiForgeryToken(HttpVerbs.Delete)]
+        [RequiresAccountConfirmation("get or remove a certificate")]
+        public virtual async Task<JsonResult> GetOrRemoveCertificate(string thumbprint)
+        {
+            var currentUser = GetCurrentUser();
+
+            if (currentUser == null || currentUser.IsDeleted)
+            {
+                return Json(HttpStatusCode.Unauthorized, obj: null);
+            }
+
+            if (Request.Is(HttpVerbs.Delete))
+            {
+                await CertificateService.DeactivateCertificateAsync(thumbprint, currentUser);
+
+                return Json(HttpStatusCode.OK, new { });
+            }
+
+            var template = Url.UserCertificateTemplate();
+
+            return GetCertificate(thumbprint, currentUser, template);
         }
 
         private async Task<CredentialViewModel> GenerateApiKeyInternal(string description, ICollection<Scope> scopes, TimeSpan? expiration)

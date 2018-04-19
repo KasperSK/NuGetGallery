@@ -29,7 +29,13 @@
                 : this.PackagesListViewModel.ManagePackagesViewModel.DefaultPackageIconUrl;
             this.PackageUrl = packageItem.PackageUrl;
             this.EditUrl = packageItem.EditUrl;
+            this.SetRequiredSignerUrl = packageItem.SetRequiredSignerUrl;
             this.ManageOwnersUrl = packageItem.ManageOwnersUrl;
+            this.RequiredSigner = packageItem.RequiredSigner;
+            this.RequiredSignerMessage = packageItem.RequiredSignerMessage;
+            this.AllSigners = packageItem.AllSigners;
+            this.ShowRequiredSigner = packageItem.ShowRequiredSigner;
+            this.CanEditRequiredSigner = packageItem.CanEditRequiredSigner;
             this.DeleteUrl = packageItem.DeleteUrl;
             this.CanEdit = packageItem.CanEdit;
             this.CanManageOwners = packageItem.CanManageOwners;
@@ -57,6 +63,47 @@
                 var url = this.PackagesListViewModel.ManagePackagesViewModel.PackageIconUrlFallback;
                 return "this.src='" + url + "'; this.onerror = null;";
             }, this);
+
+            this.GetRequiredSigner = function () {
+                if (this.RequiredSigner) {
+                    return this.RequiredSigner.Username;
+                }
+
+                return null;
+            };
+
+            function getHeaders() {
+                var headers = {};
+
+                window.nuget.addAjaxAntiForgeryToken(headers);
+
+                return headers;
+            }
+
+            this.SetRequiredSigner = function (packageItem, event) {
+                var signerUsername = event.target.value;
+
+                var url = packageItem.SetRequiredSignerUrl.replace("{username}", signerUsername);
+
+                $.ajax({
+                    method: 'POST',
+                    url: url,
+                    headers: getHeaders(),
+                    cache: false,
+                    contentType: false,
+                    processData: false,
+                    complete: function (xhr, textStatus) {
+                        switch (xhr.status) {
+                            case 200:
+                            case 409:
+                                break;
+
+                            default:
+                                break;
+                        }
+                    }
+                });
+            };
         }
 
         function PackagesListViewModel(managePackagesViewModel, type, packages) {
@@ -237,7 +284,7 @@
             if (this.Owners.length > 2) {
                 $("#ownerFilter").removeClass("hidden");
             }
-            
+
             this.ListedPackages = new PackagesListViewModel(this, "published", initialData.ListedPackages);
             this.UnlistedPackages = new PackagesListViewModel(this, "unlisted", initialData.UnlistedPackages);
             this.ReservedNamespaces = new ReservedNamespaceListViewModel(this, initialData.ReservedNamespaces);

@@ -8,7 +8,6 @@ using System.Linq;
 using Moq;
 using NuGetGallery.Diagnostics;
 using NuGetGallery.Framework;
-using NuGetGallery.Security;
 using Xunit;
 
 using TrackAction = System.Action<NuGetGallery.TelemetryService>;
@@ -36,6 +35,18 @@ namespace NuGetGallery
                 {
                     var package = fakes.Package.Packages.First();
                     var identity = Fakes.ToIdentity(fakes.User);
+
+                    yield return new object[] { "CertificateActivated",
+                        (TrackAction)(s => s.TrackCertificateActivated("thumbprint"))
+                    };
+
+                    yield return new object[] { "CertificateAdded",
+                        (TrackAction)(s => s.TrackCertificateAdded("thumbprint"))
+                    };
+
+                    yield return new object[] { "CertificateDeactivated",
+                        (TrackAction)(s => s.TrackCertificateDeactivated("thumbprint"))
+                    };
 
                     yield return new object[] { "ODataQueryFilter",
                         (TrackAction)(s => s.TrackODataQueryFilterEvent("callContext", true, true, "queryPattern"))
