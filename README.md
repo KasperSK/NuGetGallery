@@ -1,7 +1,5 @@
-[NuGet Gallery](http://nuget.org/) — Where packages are found 
+﻿[NuGet Gallery](http://nuget.org/) — Where packages are found 
 =======================================================================
-
-[![Build status](https://ci.appveyor.com/api/projects/status/6ob8lbutfecvi5n3/branch/master?svg=true)](https://ci.appveyor.com/project/NuGetteam/nugetgallery/branch/master)
 
 This is an implementation of the NuGet Gallery and API. This serves as the back-end and community 
 website for the NuGet client. For information about the NuGet project, visit the [Home repository](https://github.com/nuget/home).
@@ -27,7 +25,10 @@ This project has adopted the [Microsoft Open Source Code of Conduct](https://ope
 4. Set up the website!
 
     ```PS C:\Code\NuGetGallery> .\tools\Setup-DevEnvironment.ps1```
-5. Ensure the `NugetGallery` project is the StartUp Project and press `F5` to run the site! That's it!
+    
+5. If you would like to configure your gallery instance to use MSA/AAD, please follow the steps listed [here](https://github.com/NuGet/NuGetGallery/wiki/Configuring-MSA-AAD-for-your-on-prem-gallery-instance).
+
+6. Ensure the `NugetGallery` project is the StartUp Project and press `F5` to run the site! That's it!
 
 When working with the gallery, e-mail messages are saved to the file system (under `~/App_Data`).
 You can use an SMTP server instead by editing `src\NuGetGallery\Web.Config` and adding a `Gallery.SmtpUri`
@@ -45,7 +46,11 @@ You can undo this with this command:
     git update-index --no-assume-unchanged .vs/config/applicationhost.config
 
 This should help prevent unwanted file commits.
-    
+
+## Deploy
+
+You will find instructions on how to deploy the Gallery to Azure [here](https://github.com/NuGet/NuGetGallery/blob/master/docs/Deploying/README.md).
+
 ## Contribute
 If you find a bug with the gallery, please visit the [Issue tracker](https://github.com/NuGet/NuGetGallery/issues) and 
 create an issue. If you're feeling generous, please search to see if the issue is already logged before creating a 

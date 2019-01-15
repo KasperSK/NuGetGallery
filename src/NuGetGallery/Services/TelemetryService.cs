@@ -3,8 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Principal;
 using System.Web;
+using Newtonsoft.Json;
+using NuGet.Versioning;
 using NuGetGallery.Authentication;
 using NuGetGallery.Diagnostics;
 
@@ -16,18 +19,23 @@ namespace NuGetGallery
         {
             public const string ODataQueryFilter = "ODataQueryFilter";
             public const string PackagePush = "PackagePush";
+            public const string PackagePushFailure = "PackagePushFailure";
             public const string CreatePackageVerificationKey = "CreatePackageVerificationKey";
             public const string VerifyPackageKey = "VerifyPackageKey";
             public const string PackageReadMeChanged = "PackageReadMeChanged";
             public const string PackagePushNamespaceConflict = "PackagePushNamespaceConflict";
             public const string NewUserRegistration = "NewUserRegistration";
             public const string CredentialAdded = "CredentialAdded";
+            public const string CredentialUsed = "CredentialUsed";
             public const string UserPackageDeleteCheckedAfterHours = "UserPackageDeleteCheckedAfterHours";
             public const string UserPackageDeleteExecuted = "UserPackageDeleteExecuted";
+            public const string UserMultiFactorAuthenticationEnabled = "UserMultiFactorAuthenticationEnabled";
+            public const string UserMultiFactorAuthenticationDisabled = "UserMultiFactorAuthenticationDisabled";
             public const string PackageReflow = "PackageReflow";
             public const string PackageUnlisted = "PackageUnlisted";
             public const string PackageListed = "PackageListed";
             public const string PackageDelete = "PackageDelete";
+            public const string PackageReupload = "PackageReupload";
             public const string PackageHardDeleteReflow = "PackageHardDeleteReflow";
             public const string PackageRevalidate = "PackageRevalidate";
             public const string OrganizationTransformInitiated = "OrganizationTransformInitiated";
@@ -35,11 +43,33 @@ namespace NuGetGallery
             public const string OrganizationTransformDeclined = "OrganizationTransformDeclined";
             public const string OrganizationTransformCancelled = "OrganizationTransformCancelled";
             public const string OrganizationAdded = "OrganizationAdded";
+            public const string CertificateAdded = "CertificateAdded";
+            public const string CertificateActivated = "CertificateActivated";
+            public const string CertificateDeactivated = "CertificateDeactivated";
+            public const string PackageRegistrationRequiredSignerSet = "PackageRegistrationRequiredSignerSet";
+            public const string AccountDeleteCompleted = "AccountDeleteCompleted";
+            public const string AccountDeleteRequested = "AccountDeleteRequested";
+            public const string SymbolPackagePush = "SymbolPackagePush";
+            public const string SymbolPackagePushFailure = "SymbolPackagePushFailure";
+            public const string SymbolPackageGalleryValidation = "SymbolPackageGalleryValidation";
+            public const string PackageMetadataComplianceError = "PackageMetadataComplianceError";
+            public const string PackageMetadataComplianceWarning = "PackageMetadataComplianceWarning";
+            public const string PackageOwnershipAutomaticallyAdded = "PackageOwnershipAutomaticallyAdded";
+            public const string TyposquattingCheckResultAndTotalTimeInMs = "TyposquattingCheckResultAndTotalTimeInMs";
+            public const string TyposquattingChecklistRetrievalTimeInMs = "TyposquattingChecklistRetrievalTimeInMs";
+            public const string TyposquattingAlgorithmProcessingTimeInMs = "TyposquattingAlgorithmProcessingTimeInMs";
+            public const string TyposquattingOwnersCheckTimeInMs = "TyposquattingOwnersCheckTimeInMs";
         }
 
         private IDiagnosticsSource _diagnosticsSource;
         private ITelemetryClient _telemetryClient;
 
+        private readonly JsonSerializerSettings _defaultJsonSerializerSettings = new JsonSerializerSettings
+        {
+            ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+            Formatting = Formatting.None
+        };
+        
         // ODataQueryFilter properties
         public const string CallContext = "CallContext";
         public const string IsEnabled = "IsEnabled";
@@ -60,6 +90,7 @@ namespace NuGetGallery
         // User properties
         public const string RegistrationMethod = "RegistrationMethod";
         public const string AccountCreationDate = "AccountCreationDate";
+        public const string WasMultiFactorAuthenticated = "WasMultiFactorAuthenticated";
 
         // Verify package properties
         public const string IsVerificationKeyUsed = "IsVerificationKeyUsed";
@@ -88,6 +119,30 @@ namespace NuGetGallery
         // Organization properties
         public const string OrganizationAccountKey = "OrganizationAccountKey";
         public const string OrganizationIsRestrictedToOrganizationTenantPolicy = "OrganizationIsRestrictedToOrganizationTenantPolicy";
+
+        // Certificate properties
+        public const string Sha256Thumbprint = "Sha256Thumbprint";
+
+        //Account Delete Properties
+        public const string AccountDeletedByRole = "AccountDeletedByRole";
+        public const string AccountIsSelfDeleted = "AccountIsSelfDeleted";
+        public const string AccountDeletedIsOrganization = "AccountDeletedIsOrganization";
+        public const string CreatedDateForAccountToBeDeleted = "CreatedDateForAccountToBeDeleted";
+        public const string AccountDeleteSucceeded = "AccountDeleteSucceeded";
+
+        // Package metadata compliance properties
+        public const string ComplianceFailures = "ComplianceFailures";
+        public const string ComplianceWarnings = "ComplianceWarnings";
+
+        public const string ValueUnknown = "Unknown";
+
+        // Typosquatting check properties
+        private const int TyposquattingCollisionIdsMaxPropertyValue = 10;
+        public const string WasUploadBlocked = "WasUploadBlocked";
+        public const string CollisionPackageIds = "CollisionPackageIds";
+        public const string CollisionPackageIdsCount = "CollisionPackageIdsCount";
+        public const string CheckListLength = "CheckListLength";
+        public const string HasExtraCollisionPackageIds = "HasExtraCollisionPackageIds";
 
         public TelemetryService(IDiagnosticsService diagnosticsService, ITelemetryClient telemetryClient = null)
         {
@@ -158,6 +213,18 @@ namespace NuGetGallery
             TrackMetricForPackage(Events.PackagePush, package.PackageRegistration.Id, package.NormalizedVersion, user, identity);
         }
 
+        public void TrackPackagePushFailureEvent(string id, NuGetVersion version)
+        {
+            var normalizedVersion = version?.ToNormalizedString();
+
+            TrackMetric(Events.PackagePushFailure, 1, properties => {
+                properties.Add(ClientVersion, GetClientVersion());
+                properties.Add(ProtocolVersion, GetProtocolVersion());
+                properties.Add(PackageId, id ?? ValueUnknown);
+                properties.Add(PackageVersion, normalizedVersion ?? ValueUnknown);
+            });
+        }
+
         public void TrackPackagePushNamespaceConflictEvent(string packageId, string packageVersion, User user, IIdentity identity)
         {
             TrackMetricForPackage(Events.PackagePushNamespaceConflict, packageId, packageVersion, user, identity);
@@ -196,9 +263,21 @@ namespace NuGetGallery
             TrackMetricForAccountActivity(Events.NewUserRegistration, user, credential);
         }
 
+        public void TrackUserChangedMultiFactorAuthentication(User user, bool enabledMultiFactorAuth)
+        {
+            TrackMetricForAccountActivity(enabledMultiFactorAuth ? Events.UserMultiFactorAuthenticationEnabled : Events.UserMultiFactorAuthenticationDisabled,
+                user,
+                credential: null);
+        }
+
         public void TrackNewCredentialCreated(User user, Credential credential)
         {
             TrackMetricForAccountActivity(Events.CredentialAdded, user, credential);
+        }
+
+        public void TrackUserLogin(User user, Credential credential, bool wasMultiFactorAuthenticated)
+        {
+            TrackMetricForAccountActivity(Events.CredentialUsed, user, credential, wasMultiFactorAuthenticated);
         }
 
         public void TrackUserPackageDeleteExecuted(int packageKey, string packageId, string packageVersion, ReportPackageReason reason, bool success)
@@ -240,6 +319,11 @@ namespace NuGetGallery
             });
         }
 
+        public void TrackPackageReupload(Package package)
+        {
+            TrackMetricForPackage(Events.PackageReupload, package);
+        }
+
         public void TrackPackageReflow(Package package)
         {
             TrackMetricForPackage(Events.PackageReflow, package);
@@ -255,6 +339,63 @@ namespace NuGetGallery
             TrackMetricForPackage(Events.PackageRevalidate, package);
         }
 
+        public void TrackPackageMetadataComplianceError(string packageId, string packageVersion, IEnumerable<string> complianceFailures)
+        {
+            TrackMetricForPackage(
+                Events.PackageMetadataComplianceError, 
+                packageId, 
+                packageVersion,
+                properties => {
+                    properties.Add(ComplianceFailures, JsonConvert.SerializeObject(complianceFailures, _defaultJsonSerializerSettings));
+                });
+        }
+
+        public void TrackPackageMetadataComplianceWarning(string packageId, string packageVersion, IEnumerable<string> complianceWarnings)
+        {
+            TrackMetricForPackage(
+                Events.PackageMetadataComplianceWarning,
+                packageId,
+                packageVersion,
+                properties => {
+                    properties.Add(ComplianceWarnings, JsonConvert.SerializeObject(complianceWarnings, _defaultJsonSerializerSettings));
+                });
+        }
+
+        public void TrackPackageOwnershipAutomaticallyAdded(string packageId, string packageVersion)
+        {
+            TrackMetricForPackage(
+                Events.PackageOwnershipAutomaticallyAdded, 
+                packageId, 
+                packageVersion);
+        }
+
+        public void TrackCertificateAdded(string thumbprint)
+        {
+            TrackMetricForCertificateActivity(Events.CertificateAdded, thumbprint);
+        }
+
+        public void TrackCertificateActivated(string thumbprint)
+        {
+            TrackMetricForCertificateActivity(Events.CertificateActivated, thumbprint);
+        }
+
+        public void TrackCertificateDeactivated(string thumbprint)
+        {
+            TrackMetricForCertificateActivity(Events.CertificateDeactivated, thumbprint);
+        }
+
+        public void TrackRequiredSignerSet(string packageId)
+        {
+            if (string.IsNullOrEmpty(packageId))
+            {
+                throw new ArgumentException(Strings.ArgumentCannotBeNullOrEmpty, nameof(packageId));
+            }
+
+            TrackMetric(Events.PackageRegistrationRequiredSignerSet, 1, properties => {
+                properties.Add(PackageId, packageId);
+            });
+        }
+
         public void TrackException(Exception exception, Action<Dictionary<string, string>> addProperties)
         {
             var telemetryProperties = new Dictionary<string, string>();
@@ -264,16 +405,26 @@ namespace NuGetGallery
             _telemetryClient.TrackException(exception, telemetryProperties, metrics: null);
         }
 
-        private void TrackMetricForAccountActivity(string eventName, User user, Credential credential)
+        public void TrackSymbolPackagePushEvent(string packageId, string packageVersion)
+        {
+            TrackMetricForSymbolPackage(Events.SymbolPackagePush, packageId, packageVersion);
+        }
+
+        public void TrackSymbolPackagePushFailureEvent(string packageId, string packageVersion)
+        {
+            TrackMetricForSymbolPackage(Events.SymbolPackagePushFailure, packageId, packageVersion);
+        }
+
+        public void TrackSymbolPackageFailedGalleryValidationEvent(string packageId, string packageVersion)
+        {
+            TrackMetricForSymbolPackage(Events.SymbolPackageGalleryValidation, packageId, packageVersion);
+        }
+
+        private void TrackMetricForAccountActivity(string eventName, User user, Credential credential, bool wasMultiFactorAuthenticated = false)
         {
             if (user == null)
             {
                 throw new ArgumentNullException(nameof(user));
-            }
-
-            if (credential == null)
-            {
-                throw new ArgumentNullException(nameof(credential));
             }
 
             TrackMetric(eventName, 1, properties => {
@@ -281,9 +432,21 @@ namespace NuGetGallery
                 properties.Add(ProtocolVersion, GetProtocolVersion());
                 properties.Add(AccountCreationDate, GetAccountCreationDate(user));
                 properties.Add(RegistrationMethod, GetRegistrationMethod(credential));
+                properties.Add(WasMultiFactorAuthenticated, wasMultiFactorAuthenticated.ToString());
             });
         }
 
+        private void TrackMetricForCertificateActivity(string eventName, string thumbprint)
+        {
+            if (string.IsNullOrEmpty(thumbprint))
+            {
+                throw new ArgumentException(Strings.ArgumentCannotBeNullOrEmpty, nameof(thumbprint));
+            }
+
+            TrackMetric(eventName, 1, properties => {
+                properties.Add(Sha256Thumbprint, thumbprint);
+            });
+        }
         private static string GetClientVersion()
         {
             return HttpContext.Current?.Request?.Headers[Constants.ClientVersionHeaderName];
@@ -312,13 +475,29 @@ namespace NuGetGallery
 
         private static string GetRegistrationMethod(Credential cred)
         {
-            return cred.Type;
+            return cred?.Type ?? "";
         }
 
         private static string GetApiKeyCreationDate(User user, IIdentity identity)
         {
             var apiKey = user.GetCurrentApiKeyCredential(identity);
             return apiKey?.Created.ToString("O") ?? "N/A";
+        }
+
+        private void TrackMetricForSymbolPackage(
+            string metricName,
+            string packageId,
+            string packageVersion,
+            Action<Dictionary<string, string>> addProperties = null)
+        {
+            TrackMetric(metricName, 1, properties => {
+                properties.Add(ClientVersion, GetClientVersion());
+                properties.Add(ProtocolVersion, GetProtocolVersion());
+                properties.Add(ClientInformation, GetClientInformation());
+                properties.Add(PackageId, packageId);
+                properties.Add(PackageVersion, packageVersion);
+                addProperties?.Invoke(properties);
+            });
         }
 
         private void TrackMetricForPackage(
@@ -472,6 +651,84 @@ namespace NuGetGallery
         public void TrackOrganizationAdded(Organization organization)
         {
             TrackMetricForOrganization(Events.OrganizationAdded, organization);
+        }
+
+        public void TrackAccountDeletionCompleted(User deletedUser, User deletedBy, bool success)
+        {
+            if (deletedUser == null)
+            {
+                throw new ArgumentNullException(nameof(deletedUser));
+            }
+            if (deletedBy == null)
+            {
+                throw new ArgumentNullException(nameof(deletedBy));
+            }
+
+            TrackMetric(Events.AccountDeleteCompleted, 1, properties => {
+                properties.Add(AccountDeletedByRole, string.Join(",", deletedBy.Roles?.Select( role => role.Name) ?? new List<string>()));
+                properties.Add(AccountIsSelfDeleted, $"{deletedUser.Key == deletedBy.Key}");
+                properties.Add(AccountDeletedIsOrganization, $"{deletedUser is Organization}");
+                properties.Add(AccountDeleteSucceeded, $"{success}");
+            });
+        }
+
+        public void TrackRequestForAccountDeletion(User user)
+        {
+            if (user == null)
+            {
+                throw new ArgumentNullException(nameof(user));
+            }
+           
+            TrackMetric(Events.AccountDeleteRequested, 1, properties => {
+                properties.Add(CreatedDateForAccountToBeDeleted, $"{user.CreatedUtc}");
+            });
+        }
+
+        public void TrackSendEmail(string smtpUri, DateTimeOffset startTime, TimeSpan duration, bool success, int attemptNumber)
+        {
+            var properties = new Dictionary<string, string>
+            {
+                { "attempt", attemptNumber.ToString() }
+            };
+            _telemetryClient.TrackDependency("SMTP", smtpUri, "SendMessage", null, startTime, duration, null, success, properties);
+        }
+
+        public void TrackMetricForTyposquattingCheckResultAndTotalTime(
+            string packageId,
+            TimeSpan totalTime,
+            bool wasUploadBlocked,
+            List<string> collisionPackageIds,
+            int checklistLength)
+        {
+            TrackMetric(Events.TyposquattingCheckResultAndTotalTimeInMs, totalTime.TotalMilliseconds, properties => {
+                properties.Add(PackageId, packageId);
+                properties.Add(WasUploadBlocked, wasUploadBlocked.ToString());
+                properties.Add(CollisionPackageIds, string.Join(",", collisionPackageIds.Take(TyposquattingCollisionIdsMaxPropertyValue)));
+                properties.Add(CollisionPackageIdsCount, collisionPackageIds.Count.ToString());
+                properties.Add(CheckListLength, checklistLength.ToString());
+                properties.Add(HasExtraCollisionPackageIds, (collisionPackageIds.Count > TyposquattingCollisionIdsMaxPropertyValue).ToString());
+            });
+        }
+
+        public void TrackMetricForTyposquattingChecklistRetrievalTime(string packageId, TimeSpan checklistRetrievalTime)
+        {
+            TrackMetric(Events.TyposquattingChecklistRetrievalTimeInMs, checklistRetrievalTime.TotalMilliseconds, properties => {
+                properties.Add(PackageId, packageId);
+            });
+        }
+
+        public void TrackMetricForTyposquattingAlgorithmProcessingTime(string packageId, TimeSpan algorithmProcessingTime)
+        {
+            TrackMetric(Events.TyposquattingAlgorithmProcessingTimeInMs, algorithmProcessingTime.TotalMilliseconds, properties => {
+                properties.Add(PackageId, packageId);
+            });
+        }
+
+        public void TrackMetricForTyposquattingOwnersCheckTime(string packageId, TimeSpan ownersCheckTime)
+        {
+            TrackMetric(Events.TyposquattingOwnersCheckTimeInMs, ownersCheckTime.TotalMilliseconds, properties => {
+                properties.Add(PackageId, packageId);
+            });
         }
 
         /// <summary>

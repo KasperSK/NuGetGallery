@@ -12,20 +12,20 @@ namespace NuGetGallery
 {
     public class LoginDiscontinuationConfiguration : ILoginDiscontinuationConfiguration
     {
-        internal HashSet<string> DiscontinuedForEmailAddresses { get; }
-        internal HashSet<string> DiscontinuedForDomains { get; }
-        internal HashSet<string> ExceptionsForEmailAddresses { get; }
-        internal HashSet<string> ForceTransformationToOrganizationForEmailAddresses { get; }
-        internal HashSet<OrganizationTenantPair> EnabledOrganizationAadTenants { get; }
-        internal bool OrganizationsEnabledForAll { get; }
+        public bool IsPasswordDiscontinuedForAll { get; }
+        public HashSet<string> DiscontinuedForEmailAddresses { get; }
+        public HashSet<string> DiscontinuedForDomains { get; }
+        public HashSet<string> ExceptionsForEmailAddresses { get; }
+        public HashSet<string> ForceTransformationToOrganizationForEmailAddresses { get; }
+        public HashSet<OrganizationTenantPair> EnabledOrganizationAadTenants { get; }
 
         public LoginDiscontinuationConfiguration()
-            : this(Enumerable.Empty<string>(), 
-                  Enumerable.Empty<string>(), 
-                  Enumerable.Empty<string>(), 
+            : this(Enumerable.Empty<string>(),
+                  Enumerable.Empty<string>(),
+                  Enumerable.Empty<string>(),
                   Enumerable.Empty<string>(),
                   Enumerable.Empty<OrganizationTenantPair>(),
-                  organizationsEnabledForAll: false)
+                  isPasswordDiscontinuedForAll: false)
         {
         }
 
@@ -36,14 +36,14 @@ namespace NuGetGallery
             IEnumerable<string> exceptionsForEmailAddresses,
             IEnumerable<string> forceTransformationToOrganizationForEmailAddresses,
             IEnumerable<OrganizationTenantPair> enabledOrganizationAadTenants,
-            bool organizationsEnabledForAll)
+            bool isPasswordDiscontinuedForAll)
         {
             DiscontinuedForEmailAddresses = new HashSet<string>(discontinuedForEmailAddresses, StringComparer.OrdinalIgnoreCase);
             DiscontinuedForDomains = new HashSet<string>(discontinuedForDomains, StringComparer.OrdinalIgnoreCase);
             ExceptionsForEmailAddresses = new HashSet<string>(exceptionsForEmailAddresses, StringComparer.OrdinalIgnoreCase);
             ForceTransformationToOrganizationForEmailAddresses = new HashSet<string>(forceTransformationToOrganizationForEmailAddresses, StringComparer.OrdinalIgnoreCase);
             EnabledOrganizationAadTenants = new HashSet<OrganizationTenantPair>(enabledOrganizationAadTenants, new OrganizationTenantPairComparer());
-            OrganizationsEnabledForAll = organizationsEnabledForAll;
+            IsPasswordDiscontinuedForAll = isPasswordDiscontinuedForAll;
         }
 
         public bool IsLoginDiscontinued(AuthenticatedUser authUser)
@@ -56,7 +56,7 @@ namespace NuGetGallery
             var email = authUser.User.ToMailAddress();
             return
                 authUser.CredentialUsed.IsPassword() &&
-                IsUserOnWhitelist(authUser.User) &&
+                (IsPasswordDiscontinuedForAll || IsUserOnWhitelist(authUser.User)) &&
                 !ExceptionsForEmailAddresses.Contains(email.Address);
         }
 
@@ -71,13 +71,6 @@ namespace NuGetGallery
             return
                 DiscontinuedForDomains.Contains(email.Host) ||
                 DiscontinuedForEmailAddresses.Contains(email.Address);
-        }
-
-        public bool AreOrganizationsSupportedForUser(User user)
-        {
-            return OrganizationsEnabledForAll || 
-                (user != null && 
-                    (user.Organizations.Any() || IsUserOnWhitelist(user)));
         }
 
         public bool ShouldUserTransformIntoOrganization(User user)
@@ -95,13 +88,18 @@ namespace NuGetGallery
         {
             return EnabledOrganizationAadTenants.Contains(new OrganizationTenantPair(new MailAddress(emailAddress).Host, tenantId));
         }
+
+        public bool IsPasswordLoginDiscontinuedForAll()
+        {
+            return IsPasswordDiscontinuedForAll;
+        }
     }
 
     public interface ILoginDiscontinuationConfiguration
     {
         bool IsLoginDiscontinued(AuthenticatedUser authUser);
+        bool IsPasswordLoginDiscontinuedForAll();
         bool IsUserOnWhitelist(User user);
-        bool AreOrganizationsSupportedForUser(User user);
         bool ShouldUserTransformIntoOrganization(User user);
         bool IsTenantIdPolicySupportedForOrganization(string emailAddress, string tenantId);
     }

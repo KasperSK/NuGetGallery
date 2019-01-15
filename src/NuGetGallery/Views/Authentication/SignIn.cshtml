@@ -4,7 +4,6 @@
     ViewBag.Tab = "Sign in";
     ViewBag.SmPageColumns = Constants.ColumnsAuthenticationSm;
     ViewBag.MdPageColumns = Constants.ColumnsAuthenticationMd;
-    Layout = "~/Views/Shared/Gallery/Layout.cshtml";
 
     var returnUrl = (string)ViewData[Constants.ReturnUrlViewDataKey];
     var returnUrlMessage = (string)ViewData[Constants.ReturnUrlMessageViewDataKey];
@@ -31,8 +30,8 @@
         {
             <div class="row">
                 <div class="@ViewHelpers.GetColumnClasses(ViewBag) text-center">
-                    <a role="button" class="btn btn-default btn-block provider-button"
-                       href="@Url.Authenticate(provider.ProviderName, returnUrl)">
+                    <button type="button" class="btn btn-default btn-block provider-button"
+                       onclick="window.location.href = '@Url.Authenticate(provider.ProviderName, returnUrl)'">
                         @if (!string.IsNullOrEmpty(@provider.UI.IconImagePath))
                         {
                             <img height="24" width="24" alt="" aria-hidden="true"
@@ -40,15 +39,17 @@
                                  @(!string.IsNullOrEmpty(provider.UI.IconImageFallbackPath) ? (IHtmlString)ViewHelpers.ImageFallback(Url.Absolute(provider.UI.IconImageFallbackPath)) : new HtmlString(string.Empty)) />
                         }
                         @provider.UI.SignInMessage
-                    </a>
+                    </button>
                 </div>
             </div>
-            <div class="row text-center create-provider-account">
-                    <span>
-                        <a href="#" id="signin-assistance">Need assistance signing in?</a>
-                    </span>
-            </div>
+            <br/>
         }
+
+        <div class="row text-center create-provider-account">
+            <span>
+                <a href="#" id="signin-assistance">Need assistance signing in?</a>
+            </span>
+        </div>
 
         <div class="row nuget-signin">
             <div class="@ViewHelpers.GetColumnClasses(ViewBag) text-center">

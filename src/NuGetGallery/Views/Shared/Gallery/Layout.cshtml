@@ -4,16 +4,23 @@
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    @if (Config.Current.BlockSearchEngineIndexing || ViewBag.BlockSearchEngineIndexing == true)
+    {
+        <meta name="robots" content="noindex">
+    }
     @RenderSection("SocialMeta", required: false)
     @RenderSection("Meta", required: false)
 
-    <title>     
+    <title>
         @(Config.Current.Brand)
         @(String.IsNullOrWhiteSpace(ViewBag.Title) ? "" : "| " + ViewBag.Title)
     </title>
 
     <link href="@Url.Content("~/favicon.ico")" rel="shortcut icon" type="image/x-icon" />
-    <link title="NuGet.org" type="application/opensearchdescription+xml" href="@Url.Content("~/opensearch.xml")" rel="search">
+    @if (LinkOpenSearchXml)
+    {
+        <link title="NuGet.org" type="application/opensearchdescription+xml" href="@Url.Content("~/opensearch.xml")" rel="search">
+    }
 
     @Styles.Render("~/Content/gallery/css/site.min.css")
 

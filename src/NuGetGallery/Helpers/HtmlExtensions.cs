@@ -10,13 +10,18 @@ using System.Text.RegularExpressions;
 using System.Web;
 using System.Web.Mvc;
 using System.Web.Mvc.Html;
-using System.Web.WebPages;
 using Newtonsoft.Json;
 
 namespace NuGetGallery.Helpers
 {
     public static class HtmlExtensions
     {
+        private const string _htmlQuote = "&quot;";
+        private const string _htmlSingleQuote = "&#39;";
+        private const string _semicolon = ";";
+        private const string _hyphen = "-";
+        private static readonly string[] _trimmedHtmlEntities = new [] { _htmlQuote, _htmlSingleQuote, _semicolon, _hyphen };
+
         public static MvcHtmlString EnumDropDownListFor<TModel, TEnum>(this HtmlHelper<TModel> self, Expression<Func<TModel, TEnum?>> expression, IEnumerable<TEnum> values, string emptyItemText)
             where TEnum : struct // Can't do ": enum" but this is close
         {
@@ -58,10 +63,35 @@ namespace NuGetGallery.Helpers
 
             // Turn HTTP and HTTPS URLs into links.
             // Source: https://stackoverflow.com/a/4750468
+            string anchorEvaluator(Match match)
+            {
+                string trimmedEntityValue = string.Empty;
+                string trimmedAnchorValue = match.Value;
+
+                foreach (var trimmedEntity in _trimmedHtmlEntities)
+                {
+                    if (match.Value.EndsWith(trimmedEntity))
+                    {
+                        // Remove trailing html entity from anchor URL
+                        trimmedAnchorValue = match.Value.Substring(0, match.Value.Length - trimmedEntity.Length);
+                        trimmedEntityValue = trimmedEntity;
+
+                        break;
+                    }
+                }
+
+                if (PackageHelper.TryPrepareUrlForRendering(trimmedAnchorValue, out string formattedUri))
+                {
+                    return $"<a href=\"{formattedUri}\" rel=\"nofollow\">{formattedUri}</a>" + trimmedEntityValue;
+                }
+
+                return match.Value;
+            }
+
             encodedText = RegexEx.TryReplaceWithTimeout(
                 encodedText,
                 @"((http|https):\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&amp;:/~\+#]*[\w\-\@?^=%&amp;/~\+#])?)",
-                match => $"<a href=\"{match.Value}\" rel=\"nofollow\">{match.Value}</a>",
+                anchorEvaluator,
                 RegexOptions.IgnoreCase);
 
             // Replace new lines with the <br /> tag.

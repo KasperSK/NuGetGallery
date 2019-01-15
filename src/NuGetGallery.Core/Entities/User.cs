@@ -51,6 +51,7 @@ namespace NuGetGallery
             OrganizationRequests = new List<MembershipRequest>();
             Roles = new List<Role>();
             Username = username;
+            UserCertificates = new List<UserCertificate>();
         }
 
         /// <summary>
@@ -131,6 +132,11 @@ namespace NuGetGallery
 
         public virtual ICollection<UserSecurityPolicy> SecurityPolicies { get; set; }
 
+        /// <summary>
+        /// Gets or sets the collection of user certificates.
+        /// </summary>
+        public virtual ICollection<UserCertificate> UserCertificates { get; set; }
+
         public void ConfirmEmailAddress()
         {
             if (string.IsNullOrEmpty(UnconfirmedEmailAddress))
@@ -148,7 +154,7 @@ namespace NuGetGallery
             UnconfirmedEmailAddress = null;
         }
 
-        public void UpdateEmailAddress(string newEmailAddress, Func<string> generateToken)
+        public void UpdateUnconfirmedEmailAddress(string newEmailAddress, Func<string> generateToken)
         {
             if (!string.IsNullOrEmpty(UnconfirmedEmailAddress))
             {

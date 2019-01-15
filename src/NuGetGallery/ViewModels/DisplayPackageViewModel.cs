@@ -24,6 +24,12 @@ namespace NuGetGallery
             PackageVersions = packageHistory.Select(p => new DisplayPackageViewModel(p, currentUser, GetPushedBy(p, currentUser)));
 
             PushedBy = GetPushedBy(package, currentUser);
+            PackageFileSize = package.PackageFileSize;
+
+            LatestSymbolsPackage = package
+                .SymbolPackages
+                .OrderByDescending(sp => sp.Created)
+                .FirstOrDefault();
 
             if (packageHistory.Any())
             {
@@ -33,6 +39,7 @@ namespace NuGetGallery
                 TotalDaysSinceCreated = Convert.ToInt32(Math.Max(1, Math.Round((DateTime.UtcNow - packageHistory.Min(p => p.Created)).TotalDays)));
                 DownloadsPerDay = TotalDownloadCount / TotalDaysSinceCreated; // for the package
                 DownloadsPerDayLabel = DownloadsPerDay < 1 ? "<1" : DownloadsPerDay.ToNuGetNumberString();
+                IsDotnetToolPackageType = package.PackageTypes.Any(e => e.Name.Equals("DotnetTool", StringComparison.OrdinalIgnoreCase));
             }
         }
 
@@ -40,18 +47,37 @@ namespace NuGetGallery
             : base(package, currentUser)
         {
             Copyright = package.Copyright;
-            
+
             DownloadCount = package.DownloadCount;
             LastEdited = package.LastEdited;
-            
+
             TotalDaysSinceCreated = 0;
             DownloadsPerDay = 0;
 
             PushedBy = pushedBy;
+
+            InitializeRepositoryMetadata(package.RepositoryUrl, package.RepositoryType);
+
+            if (PackageHelper.TryPrepareUrlForRendering(package.ProjectUrl, out string projectUrl))
+            {
+                ProjectUrl = projectUrl;
+            }
+
+            if (PackageHelper.TryPrepareUrlForRendering(package.LicenseUrl, out string licenseUrl))
+            {
+                LicenseUrl = licenseUrl;
+
+                var licenseNames = package.LicenseNames;
+                if (!string.IsNullOrEmpty(licenseNames))
+                {
+                    LicenseNames = licenseNames.Split(',').Select(l => l.Trim());
+                }
+            }
         }
 
         public bool ValidatingTooLong { get; set; }
-        public IReadOnlyList<ValidationIssue> ValidationIssues { get; set; }
+        public IReadOnlyList<ValidationIssue> PackageValidationIssues { get; set; }
+        public IReadOnlyList<ValidationIssue> SymbolsPackageValidationIssues { get; set; }
         public DependencySetsViewModel Dependencies { get; set; }
         public IEnumerable<DisplayPackageViewModel> PackageVersions { get; set; }
         public string Copyright { get; set; }
@@ -59,9 +85,12 @@ namespace NuGetGallery
         public DateTime? LastEdited { get; set; }
         public int DownloadsPerDay { get; private set; }
         public int TotalDaysSinceCreated { get; private set; }
+        public long PackageFileSize { get; private set; }
+        public SymbolPackage LatestSymbolsPackage { get; private set; }
 
         public bool HasSemVer2Version { get; }
         public bool HasSemVer2Dependency { get; }
+        public bool IsDotnetToolPackageType { get; set; }
 
         public bool HasNewerPrerelease
         {
@@ -74,12 +103,31 @@ namespace NuGetGallery
                 return latestPrereleaseVersion > NuGetVersion;
             }
         }
+        
+        public bool HasNewerRelease
+        {
+            get
+            {
+                var latestReleaseVersion = PackageVersions
+                    .Where(pv => !pv.Prerelease && pv.Available && pv.Listed)
+                    .Max(pv => pv.NuGetVersion);
+
+                return latestReleaseVersion > NuGetVersion;
+            }
+        }
 
         public bool? IsIndexed { get; set; }
 
         public string DownloadsPerDayLabel { get; private set; }
 
         public string PushedBy { get; private set; }
+
+        public bool IsCertificatesUIEnabled { get; set; }
+        public string RepositoryUrl { get; private set; }
+        public RepositoryKind RepositoryType { get; private set; }
+        public string ProjectUrl { get; set; }
+        public string LicenseUrl { get; set; }
+        public IEnumerable<string> LicenseNames { get; set; }
 
         private IDictionary<User, string> _pushedByCache = new Dictionary<User, string>();
 
@@ -122,6 +170,41 @@ namespace NuGetGallery
             }
 
             return _pushedByCache[userPushedBy];
+        }
+
+        private void InitializeRepositoryMetadata(string repositoryUrl, string repositoryType)
+        {
+            RepositoryType = RepositoryKind.Unknown;
+
+            if (Uri.TryCreate(repositoryUrl, UriKind.Absolute, out var repoUri))
+            {
+                if (repoUri.IsHttpsProtocol())
+                {
+                    RepositoryUrl = repositoryUrl;
+                }
+
+                if (repoUri.IsGitHubUri())
+                {
+                    RepositoryType = RepositoryKind.GitHub;
+
+                    // Fix-up git:// to https:// for GitHub URLs (we should add this fix-up to other repos in the future)
+                    if (repoUri.IsGitProtocol())
+                    {
+                        RepositoryUrl = repoUri.ToHttps().ToString();
+                    }
+                }
+                else if (PackageHelper.IsGitRepositoryType(repositoryType))
+                {
+                    RepositoryType = RepositoryKind.Git;
+                }
+            }
+        }
+
+        public enum RepositoryKind
+        {
+            Unknown,
+            Git,
+            GitHub,
         }
     }
 }

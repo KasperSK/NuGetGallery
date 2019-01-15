@@ -16,9 +16,7 @@ namespace NuGetGallery.Views.Packages
 {
     public class ValidationIssueFacts
     {
-        private const string UnknownIssueMessage = "<strong>Package publishing failed.</strong> This package could " +
-            "not be published since package validation failed. Please contact <a href=\"mailto:support@nuget.org\">" +
-            "support@nuget.org</a>.";
+        private const string UnknownIssueMessage = "There was an unknown failure when validating your package.";
         private readonly ITestOutputHelper _output;
 
         public ValidationIssueFacts(ITestOutputHelper output)
@@ -26,7 +24,6 @@ namespace NuGetGallery.Views.Packages
             _output = output;
         }
 
-        [Theory]
         [MemberData(nameof(HasACaseForAllIssueTypesTestData))]
         public void HasACaseForAllIssueTypes(ValidationIssue issue)
         {
@@ -100,6 +97,11 @@ namespace NuGetGallery.Views.Packages
                 yield return ValidationIssue.OnlyAuthorSignaturesSupported;
                 yield return ValidationIssue.AuthorAndRepositoryCounterSignaturesNotSupported;
                 yield return ValidationIssue.OnlySignatureFormatVersion1Supported;
+                yield return ValidationIssue.AuthorCounterSignaturesNotSupported;
+                yield return ValidationIssue.PackageIsNotSigned;
+                yield return ValidationIssue.SymbolErrorCode_ChecksumDoesNotMatch;
+                yield return ValidationIssue.SymbolErrorCode_MatchingPortablePDBNotFound;
+                yield return new UnauthorizedCertificateFailure("thumbprint");
             }
         }
 

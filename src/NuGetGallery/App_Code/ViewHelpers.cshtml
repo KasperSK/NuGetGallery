@@ -1,4 +1,5 @@
 ﻿@using System.Web.Mvc
+@using System.Web.Routing
 @using System.Web.Mvc.Html
 @using Microsoft.Web.Helpers
 @using NuGetGallery
@@ -44,6 +45,16 @@
         <i class="ms-Icon ms-Icon--@icon" aria-hidden="true"></i>
         @htmlContent(MvcHtmlString.Empty)
     </div>
+}
+
+@helper Alert(string htmlContent, string subclass, string icon, bool isAlertRole = false)
+{
+    @Alert(s => new HelperResult(t => t.Write(htmlContent)), subclass, icon, isAlertRole);
+}
+
+@helper AlertInfo(string htmlContent, bool isAlertRole = false)
+{
+    @Alert(htmlContent, "info", "Info", isAlertRole)
 }
 
 @helper AlertInfo(Func<MvcHtmlString, HelperResult> htmlContent, bool isAlertRole = false)
@@ -108,19 +119,6 @@
         NuGet.org password login is deprecated. Please use a Microsoft account to sign into NuGet gallery.
     </text>
     )
-}
-
-@helper AlertPackageVerifyRecommendation()
-{
-    @AlertWarning(
-    @<text>
-        Please verify the package metadata below.<br/>
-        <em>
-            To make changes, we recommend you cancel the upload, make the edits in the nuspec, and upload a new package.
-            <a href="https://docs.microsoft.com/en-us/nuget/policies/nuget-faq#managing-packages-on-nugetorg" alt="Read more">Read more</a><br />
-        </em>
-    </text>
-        )
 }
 
 @helper ErrorPage(UrlHelper url, System.Web.Mvc.HtmlHelper html, string errorNumber, string errorName, Func<MvcHtmlString, HelperResult> errorTextMain, Func<MvcHtmlString, HelperResult> errorTextSub = null)
@@ -251,7 +249,7 @@
         {
             <i class="ms-Icon ms-Icon--Group" aria-hidden="true"></i>
         }
-        <a href="@url.User(user.Username)">@user.Username</a>
+        <a href="@url.User(user.Username)" title="@user.Username">@user.Username.Abbreviate(15)</a>
     </span>
 }
 
@@ -353,6 +351,7 @@
             var cookieService = DependencyResolver.Current.GetService<ICookieComplianceService>();
             if (cookieService.CanWriteNonEssentialCookies(Request))
             {
+		var obfuscatedRequest = ObfuscationHelper.ObfuscateRequestUrl(new HttpContextWrapper(HttpContext.Current), RouteTable.Routes);
                 <script>
                     (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
                     (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
@@ -360,6 +359,9 @@
                     })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
 
                     ga('create', '@propertyId', 'auto');
+                    ga('set', 'anonymizeIp', true);
+                    ga('set', 'page', '@obfuscatedRequest');
+                    ga('set', 'title', '');
                     ga('send', 'pageview');
                 </script>
             }
@@ -450,7 +452,7 @@ var hlp = new AccordionHelper(name, formModelStatePrefix, expanded, page);
 
 @helper AjaxAntiForgeryToken(System.Web.Mvc.HtmlHelper html)
 {
-    <form id="AntiForgeryForm">
+    <form aria-hidden="true" id="AntiForgeryForm">
         @html.AntiForgeryToken()
     </form>
 }
@@ -481,8 +483,36 @@ var hlp = new AccordionHelper(name, formModelStatePrefix, expanded, page);
         <script type="text/javascript">
             var sections = @viewPage.Html.Raw(Json.Encode(viewSections));
             for (var i in sections) {
-                var containerId = sections[i] + "-container";
-                window.nuget.configureExpanderHeading(containerId);
+                var configureSection = function (section) {
+                    var containerId = section + "-container";
+                    window.nuget.configureExpanderHeading(containerId);
+
+                    // Configure the cancel button to close the section when it's clicked
+                    $("#cancel-" + section).click(function (e) {
+                        // Collapse the container.
+                        $("#" + containerId).collapse('hide');
+
+                        // Prevent navigation.
+                        e.preventDefault();
+
+                        // Reset the form.
+                        var formElement = $("#" + containerId + " form")[0];
+                        if (formElement) {
+                            formElement.reset();
+                        }
+
+                        // Clear values.
+                        $("#" + containerId + " input[type='text']").val("");
+                        $("#" + containerId + " input[type='password']").val("");
+
+                        // Reset the validation state.
+                        if (formElement) {
+                            window.nuget.resetFormValidation(formElement);
+                        }
+                    });
+                }
+
+                configureSection(sections[i]);
             }
         </script>
     }
@@ -532,7 +562,7 @@ var hlp = new AccordionHelper(name, formModelStatePrefix, expanded, page);
                 @if (!disabled)
                 {
                     <a href="#" role="button" data-toggle="collapse" data-target="#@id-container"
-                        aria-expanded="@expanded" aria-controls="@id-container" id="show-@id-container">
+                        aria-expanded="@(expanded ? "true" : "false")" aria-controls="@id-container" id="show-@id-container">
                         <i class="ms-Icon ms-Icon--@(expanded ? expandedIcon : collapsedIcon)"
                             aria-hidden="@(expanded ? "false" : "true")"></i>
                         <span>@title(MvcHtmlString.Empty)</span>
@@ -607,4 +637,25 @@ var hlp = new AccordionHelper(name, formModelStatePrefix, expanded, page);
     }.Concat(segments).ToArray();
 
     @BreadcrumbWithProfile(url, currentUser, showDivider, newSegments);
+}
+
+@helper RecatpchaScripts(string reCaptchaPublicKey, string submitId)
+{
+    if (!string.IsNullOrEmpty(reCaptchaPublicKey))
+    {
+        <script src='https://www.google.com/recaptcha/api.js' async defer></script>
+        <script type="text/javascript">
+            var $submit = $('@("#" + submitId)');
+            $submit.addClass("g-recaptcha");
+            $submit.attr({
+                'data-sitekey': "@reCaptchaPublicKey",
+                'data-size': "invisible",
+                'data-callback': "onSubmit",
+                'data-tabindex': "-1"
+            });
+            function onSubmit(token) {
+                $submit.parents('form').submit();
+            }
+        </script>
+    }
 }

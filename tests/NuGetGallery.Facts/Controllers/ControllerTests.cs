@@ -1,13 +1,13 @@
 ﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-using NuGetGallery.Filters;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Web.Mvc;
+using NuGetGallery.Filters;
 using Xunit;
 
 namespace NuGetGallery.Controllers
@@ -31,7 +31,7 @@ namespace NuGetGallery.Controllers
                 Controller = method.DeclaringType;
                 Name = method.Name;
             }
-            
+
             public bool Equals(ControllerActionRuleException other)
             {
                 return other != null && other.Controller == Controller && other.Name == Name;
@@ -60,6 +60,7 @@ namespace NuGetGallery.Controllers
             var exceptions = new ControllerActionRuleException[]
             {
                 new ControllerActionRuleException(typeof(ApiController), nameof(ApiController.CreatePackagePut)),
+                new ControllerActionRuleException(typeof(ApiController), nameof(ApiController.CreateSymbolPackagePutAsync)),
                 new ControllerActionRuleException(typeof(ApiController), nameof(ApiController.CreatePackagePost)),
                 new ControllerActionRuleException(typeof(ApiController), nameof(ApiController.CreatePackageVerificationKeyAsync)),
                 new ControllerActionRuleException(typeof(ApiController), nameof(ApiController.DeletePackage)),
@@ -98,7 +99,7 @@ namespace NuGetGallery.Controllers
         public void AllActionsHaveUIAuthorizeAttribute()
         {
             // Arrange
-            
+
             // These actions are allowed to continue to support a discontinued login.
             var expectedActionsSupportingDiscontinuedLogins = new ControllerActionRuleException[]
             {
@@ -118,7 +119,7 @@ namespace NuGetGallery.Controllers
             var actions = GetAllActions();
 
             // Assert
-            
+
             // No actions should have the base authorize attribute!
             var actionsWithBaseAuthorizeAttribute = actions
                 .Where(m => m.GetCustomAttributes().Any(a => a.GetType() == typeof(AuthorizeAttribute)));
@@ -141,11 +142,11 @@ namespace NuGetGallery.Controllers
         {
             return Assembly.GetAssembly(typeof(AppController)).GetTypes()
                 // Get all types that are controllers.
-                .Where(t => typeof(Controller).IsAssignableFrom(t))
+                .Where(typeof(Controller).IsAssignableFrom)
                 // Get all public methods of those types.
                 .SelectMany(t => t.GetMethods(BindingFlags.Instance | BindingFlags.DeclaredOnly | BindingFlags.Public))
                 // Filter out compiler generated methods.
-                .Where(m => !m.GetCustomAttributes(typeof(CompilerGeneratedAttribute), true).Any())
+                .Where(m => !m.GetCustomAttributes(typeof(CompilerGeneratedAttribute), inherit: true).Any())
                 // Filter out exceptions.
                 .Where(m =>
                 {

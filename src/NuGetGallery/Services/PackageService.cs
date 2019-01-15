@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Data.Entity;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using NuGet.Frameworks;
 using NuGet.Packaging;
@@ -12,27 +13,28 @@ using NuGet.Packaging.Core;
 using NuGet.Versioning;
 using NuGetGallery.Auditing;
 using NuGetGallery.Packaging;
+using NuGetGallery.Security;
 
 namespace NuGetGallery
 {
     public class PackageService : CorePackageService, IPackageService
     {
-        private readonly IEntityRepository<PackageRegistration> _packageRegistrationRepository;
-        private readonly IPackageNamingConflictValidator _packageNamingConflictValidator;
         private readonly IAuditingService _auditingService;
         private readonly ITelemetryService _telemetryService;
+        private readonly ISecurityPolicyService _securityPolicyService;
 
         public PackageService(
             IEntityRepository<PackageRegistration> packageRegistrationRepository,
             IEntityRepository<Package> packageRepository,
-            IPackageNamingConflictValidator packageNamingConflictValidator,
+            IEntityRepository<Certificate> certificateRepository,
             IAuditingService auditingService,
-            ITelemetryService telemetryService) : base(packageRepository)
+            ITelemetryService telemetryService,
+            ISecurityPolicyService securityPolicyService)
+            : base(packageRepository, packageRegistrationRepository, certificateRepository)
         {
-            _packageRegistrationRepository = packageRegistrationRepository ?? throw new ArgumentNullException(nameof(packageRegistrationRepository));
-            _packageNamingConflictValidator = packageNamingConflictValidator ?? throw new ArgumentNullException(nameof(packageNamingConflictValidator));
             _auditingService = auditingService ?? throw new ArgumentNullException(nameof(auditingService));
             _telemetryService = telemetryService ?? throw new ArgumentNullException(nameof(telemetryService));
+            _securityPolicyService = securityPolicyService ?? throw new ArgumentNullException(nameof(securityPolicyService));
         }
 
         /// <summary>
@@ -44,7 +46,7 @@ namespace NuGetGallery
         /// <exception cref="InvalidPackageException">
         /// This exception will be thrown when a package metadata property violates a data validation constraint.
         /// </exception>
-        public void EnsureValid(PackageArchiveReader packageArchiveReader)
+        public async Task EnsureValid(PackageArchiveReader packageArchiveReader)
         {
             try
             {
@@ -52,15 +54,16 @@ namespace NuGetGallery
                     packageArchiveReader.GetNuspecReader(),
                     strict: true);
 
-                ValidateNuGetPackageMetadata(packageMetadata);
-
-                ValidatePackageTitle(packageMetadata);
+                PackageHelper.ValidateNuGetPackageMetadata(packageMetadata);
 
                 var supportedFrameworks = GetSupportedFrameworks(packageArchiveReader).Select(fn => fn.ToShortNameOrNull()).ToArray();
                 if (!supportedFrameworks.AnySafe(sf => sf == null))
                 {
                     ValidateSupportedFrameworks(supportedFrameworks);
                 }
+
+                // This will throw if the package contains an entry which will extract outside of the target extraction directory
+                await packageArchiveReader.ValidatePackageEntriesAsync(CancellationToken.None);
             }
             catch (Exception exception) when (exception is EntityException || exception is PackagingException)
             {
@@ -91,11 +94,9 @@ namespace NuGetGallery
                     nugetPackage.GetNuspecReader(),
                     strict: true);
 
-                ValidateNuGetPackageMetadata(packageMetadata);
+                PackageHelper.ValidateNuGetPackageMetadata(packageMetadata);
 
-                ValidatePackageTitle(packageMetadata);
-
-                packageRegistration = CreateOrGetPackageRegistration(owner, currentUser, packageMetadata, isVerified);
+                packageRegistration = CreateOrGetPackageRegistration(owner, packageMetadata, isVerified);
             }
             catch (Exception exception) when (exception is EntityException || exception is PackagingException)
             {
@@ -110,16 +111,21 @@ namespace NuGetGallery
             return package;
         }
 
-        public virtual PackageRegistration FindPackageRegistrationById(string id)
+        public IQueryable<PackageRegistration> GetAllPackageRegistrations()
         {
-            if (id == null)
+            return _packageRegistrationRepository.GetAll();
+        }
+
+        public override PackageRegistration FindPackageRegistrationById(string packageId)
+        {
+            if (packageId == null)
             {
-                throw new ArgumentNullException(nameof(id));
+                throw new ArgumentNullException(nameof(packageId));
             }
 
             return _packageRegistrationRepository.GetAll()
                 .Include(pr => pr.Owners)
-                .SingleOrDefault(pr => pr.Id == id);
+                .SingleOrDefault(pr => pr.Id == packageId);
         }
 
         public virtual Package FindPackageByIdAndVersion(
@@ -220,7 +226,7 @@ namespace NuGetGallery
 
         public IEnumerable<Package> FindPackagesByOwner(User user, bool includeUnlisted, bool includeVersions = false)
         {
-            return GetPackagesForOwners(new [] { user.Key }, includeUnlisted, includeVersions);
+            return GetPackagesForOwners(new[] { user.Key }, includeUnlisted, includeVersions);
         }
 
         /// <summary>
@@ -345,17 +351,29 @@ namespace NuGetGallery
             }
         }
 
-        public async Task AddPackageOwnerAsync(PackageRegistration package, User newOwner)
+        public async Task AddPackageOwnerAsync(PackageRegistration package, User newOwner, bool commitChanges = true)
         {
             package.Owners.Add(newOwner);
-            await _packageRepository.CommitChangesAsync();
+
+            if (commitChanges)
+            {
+                await _packageRepository.CommitChangesAsync();
+            }
+
+            if (_securityPolicyService.IsSubscribed(newOwner, AutomaticallyOverwriteRequiredSignerPolicy.PolicyName))
+            {
+                await SetRequiredSignerAsync(package, newOwner, commitChanges);
+            }
         }
 
-        public async Task RemovePackageOwnerAsync(PackageRegistration package, User user)
+        public async Task RemovePackageOwnerAsync(PackageRegistration package, User user, bool commitChanges = true)
         {
             // To support the delete account scenario, the admin can delete the last owner of a package.
             package.Owners.Remove(user);
-            await _packageRepository.CommitChangesAsync();
+            if (commitChanges)
+            {
+                await _packageRepository.CommitChangesAsync();
+            }
         }
 
         public async Task MarkPackageListedAsync(Package package, bool commitChanges = true)
@@ -374,6 +392,12 @@ namespace NuGetGallery
             {
                 throw new InvalidOperationException("A deleted package should never be listed!");
             }
+
+            if (package.PackageStatusKey == PackageStatus.FailedValidation)
+            {
+                throw new InvalidOperationException("A package that failed validation should never be listed!");
+            }
+
             if (!package.Listed && (package.IsLatestStable || package.IsLatest))
             {
                 throw new InvalidOperationException("An unlisted package should never be latest or latest stable!");
@@ -427,16 +451,12 @@ namespace NuGetGallery
             }
         }
 
-        private PackageRegistration CreateOrGetPackageRegistration(User owner, User currentUser, PackageMetadata packageMetadata, bool isVerified)
+        private PackageRegistration CreateOrGetPackageRegistration(User owner, PackageMetadata packageMetadata, bool isVerified)
         {
             var packageRegistration = FindPackageRegistrationById(packageMetadata.Id);
-            
+
             if (packageRegistration == null)
             {
-                if (_packageNamingConflictValidator.IdConflictsWithExistingPackageTitle(packageMetadata.Id))
-                {
-                    throw new EntityException(Strings.NewRegistrationIdMatchesExistingPackageTitle, packageMetadata.Id);
-                }
 
                 packageRegistration = new PackageRegistration
                 {
@@ -501,6 +521,8 @@ namespace NuGetGallery
             package.IconUrl = packageMetadata.IconUrl.ToEncodedUrlStringOrNull();
             package.LicenseUrl = packageMetadata.LicenseUrl.ToEncodedUrlStringOrNull();
             package.ProjectUrl = packageMetadata.ProjectUrl.ToEncodedUrlStringOrNull();
+            package.RepositoryUrl = packageMetadata.RepositoryUrl.ToEncodedUrlStringOrNull();
+            package.RepositoryType = packageMetadata.RepositoryType;
             package.MinClientVersion = packageMetadata.MinClientVersion.ToStringOrNull();
 
 #pragma warning disable 618 // TODO: remove Package.Authors completely once production services definitely no longer need it
@@ -553,93 +575,6 @@ namespace NuGetGallery
             return package.GetSupportedFrameworks();
         }
 
-        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Maintainability", "CA1502:AvoidExcessiveComplexity")]
-        private static void ValidateNuGetPackageMetadata(PackageMetadata packageMetadata)
-        {
-            // TODO: Change this to use DataAnnotations
-            if (packageMetadata.Id.Length > CoreConstants.MaxPackageIdLength)
-            {
-                throw new EntityException(Strings.NuGetPackagePropertyTooLong, "Id", CoreConstants.MaxPackageIdLength);
-            }
-            if (packageMetadata.Authors != null && packageMetadata.Authors.Flatten().Length > 4000)
-            {
-                throw new EntityException(Strings.NuGetPackagePropertyTooLong, "Authors", "4000");
-            }
-            if (packageMetadata.Copyright != null && packageMetadata.Copyright.Length > 4000)
-            {
-                throw new EntityException(Strings.NuGetPackagePropertyTooLong, "Copyright", "4000");
-            }
-            if (packageMetadata.Description == null)
-            {
-                throw new EntityException(Strings.NuGetPackagePropertyMissing, "Description");
-            }
-            else if (packageMetadata.Description != null && packageMetadata.Description.Length > 4000)
-            {
-                throw new EntityException(Strings.NuGetPackagePropertyTooLong, "Description", "4000");
-            }
-            if (packageMetadata.IconUrl != null && packageMetadata.IconUrl.AbsoluteUri.Length > 4000)
-            {
-                throw new EntityException(Strings.NuGetPackagePropertyTooLong, "IconUrl", "4000");
-            }
-            if (packageMetadata.LicenseUrl != null && packageMetadata.LicenseUrl.AbsoluteUri.Length > 4000)
-            {
-                throw new EntityException(Strings.NuGetPackagePropertyTooLong, "LicenseUrl", "4000");
-            }
-            if (packageMetadata.ProjectUrl != null && packageMetadata.ProjectUrl.AbsoluteUri.Length > 4000)
-            {
-                throw new EntityException(Strings.NuGetPackagePropertyTooLong, "ProjectUrl", "4000");
-            }
-            if (packageMetadata.Summary != null && packageMetadata.Summary.Length > 4000)
-            {
-                throw new EntityException(Strings.NuGetPackagePropertyTooLong, "Summary", "4000");
-            }
-            if (packageMetadata.Tags != null && packageMetadata.Tags.Length > 4000)
-            {
-                throw new EntityException(Strings.NuGetPackagePropertyTooLong, "Tags", "4000");
-            }
-            if (packageMetadata.Title != null && packageMetadata.Title.Length > 256)
-            {
-                throw new EntityException(Strings.NuGetPackagePropertyTooLong, "Title", "256");
-            }
-
-            if (packageMetadata.Version != null && packageMetadata.Version.ToFullString().Length > 64)
-            {
-                throw new EntityException(Strings.NuGetPackagePropertyTooLong, "Version", "64");
-            }
-
-            if (packageMetadata.Language != null && packageMetadata.Language.Length > 20)
-            {
-                throw new EntityException(Strings.NuGetPackagePropertyTooLong, "Language", "20");
-            }
-
-            // Validate dependencies
-            if (packageMetadata.GetDependencyGroups() != null)
-            {
-                var packageDependencies = packageMetadata.GetDependencyGroups().ToList();
-
-                foreach (var dependency in packageDependencies.SelectMany(s => s.Packages))
-                {
-                    // NuGet.Core compatibility - dependency package id can not be > 128 characters
-                    if (dependency.Id != null && dependency.Id.Length > CoreConstants.MaxPackageIdLength)
-                    {
-                        throw new EntityException(Strings.NuGetPackagePropertyTooLong, "Dependency.Id", CoreConstants.MaxPackageIdLength);
-                    }
-
-                    // NuGet.Core compatibility - dependency versionspec can not be > 256 characters
-                    if (dependency.VersionRange != null && dependency.VersionRange.ToString().Length > 256)
-                    {
-                        throw new EntityException(Strings.NuGetPackagePropertyTooLong, "Dependency.VersionSpec", "256");
-                    }
-                }
-
-                // NuGet.Core compatibility - flattened dependencies should be < Int16.MaxValue
-                if (packageDependencies.Flatten().Length > Int16.MaxValue)
-                {
-                    throw new EntityException(Strings.NuGetPackagePropertyTooLong, "Dependencies", Int16.MaxValue);
-                }
-            }
-        }
-
         private static void ValidateSupportedFrameworks(string[] supportedFrameworks)
         {
             // Frameworks within the portable profile are not allowed to have profiles themselves.
@@ -653,14 +588,6 @@ namespace NuGetGallery
             {
                 throw new EntityException(
                     Strings.InvalidPortableFramework, invalidPortableFramework);
-            }
-        }
-
-        private void ValidatePackageTitle(PackageMetadata packageMetadata)
-        {
-            if (_packageNamingConflictValidator.TitleConflictsWithExistingRegistrationId(packageMetadata.Id, packageMetadata.Title))
-            {
-                throw new EntityException(Strings.TitleMatchesExistingRegistration, packageMetadata.Title);
             }
         }
 
@@ -691,7 +618,7 @@ namespace NuGetGallery
             }
         }
 
-        public virtual async Task UpdatePackageVerifiedStatusAsync(IReadOnlyCollection<PackageRegistration> packageRegistrationList, bool isVerified)
+        public virtual async Task UpdatePackageVerifiedStatusAsync(IReadOnlyCollection<PackageRegistration> packageRegistrationList, bool isVerified, bool commitChanges = true)
         {
             var packageRegistrationIdSet = new HashSet<string>(packageRegistrationList.Select(prl => prl.Id));
             var allPackageRegistrations = _packageRegistrationRepository.GetAll();
@@ -704,7 +631,134 @@ namespace NuGetGallery
                 packageRegistrationsToUpdate
                     .ForEach(pru => pru.IsVerified = isVerified);
 
+                if (commitChanges)
+                {
+                    await _packageRegistrationRepository.CommitChangesAsync();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Asynchronously sets the signer as the required signer on all package registrations owned by the signer.
+        /// </summary>
+        /// <param name="signer">A user.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="signer" /> is <c>null</c>.</exception>
+        public async Task SetRequiredSignerAsync(User signer)
+        {
+            if (signer == null)
+            {
+                throw new ArgumentNullException(nameof(signer));
+            }
+
+            var registrations = FindPackageRegistrationsByOwner(signer);
+            var auditRecords = new List<PackageRegistrationAuditRecord>();
+            var packageIds = new List<string>();
+            var isCommitRequired = false;
+
+            foreach (var registration in registrations)
+            {
+                string previousRequiredSigner = null;
+                string newRequiredSigner = null;
+
+                if (!registration.RequiredSigners.Contains(signer))
+                {
+                    previousRequiredSigner = registration.RequiredSigners.FirstOrDefault()?.Username;
+
+                    registration.RequiredSigners.Clear();
+
+                    isCommitRequired = true;
+
+                    registration.RequiredSigners.Add(signer);
+
+                    newRequiredSigner = signer.Username;
+
+                    var auditRecord = PackageRegistrationAuditRecord.CreateForSetRequiredSigner(
+                        registration,
+                        previousRequiredSigner,
+                        newRequiredSigner);
+
+                    auditRecords.Add(auditRecord);
+                    packageIds.Add(registration.Id);
+                }
+            }
+
+            if (isCommitRequired)
+            {
                 await _packageRegistrationRepository.CommitChangesAsync();
+
+                foreach (var auditRecord in auditRecords)
+                {
+                    await _auditingService.SaveAuditRecordAsync(auditRecord);
+                }
+
+                foreach (var packageId in packageIds)
+                {
+                    _telemetryService.TrackRequiredSignerSet(packageId);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Asynchronously sets the signer as the required signer on a single package registration owned by the signer.
+        /// </summary>
+        /// <param name="registration">A package registration.</param>
+        /// <param name="signer">A user.  May be <c>null</c>.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="registration" /> is <c>null</c>.</exception>
+        public async Task SetRequiredSignerAsync(PackageRegistration registration, User signer, bool commitChanges = true)
+        {
+            if (registration == null)
+            {
+                throw new ArgumentNullException(nameof(registration));
+            }
+
+            var isCommitRequired = false;
+
+            string previousRequiredSigner = null;
+            string newRequiredSigner = null;
+
+            if (signer == null)
+            {
+                var currentRequiredSigner = registration.RequiredSigners.FirstOrDefault();
+
+                if (currentRequiredSigner != null)
+                {
+                    previousRequiredSigner = currentRequiredSigner.Username;
+
+                    registration.RequiredSigners.Clear();
+
+                    isCommitRequired = true;
+                }
+            }
+            else if (!registration.RequiredSigners.Contains(signer))
+            {
+                previousRequiredSigner = registration.RequiredSigners.FirstOrDefault()?.Username;
+
+                registration.RequiredSigners.Clear();
+
+                isCommitRequired = true;
+
+                registration.RequiredSigners.Add(signer);
+
+                newRequiredSigner = signer.Username;
+            }
+
+            if (isCommitRequired)
+            {
+                if (commitChanges)
+                {
+                    await _packageRegistrationRepository.CommitChangesAsync();
+                }
+
+                var auditRecord = PackageRegistrationAuditRecord.CreateForSetRequiredSigner(
+                    registration,
+                    previousRequiredSigner,
+                    newRequiredSigner);
+
+                await _auditingService.SaveAuditRecordAsync(auditRecord);
+
+                _telemetryService.TrackRequiredSignerSet(registration.Id);
             }
         }
     }

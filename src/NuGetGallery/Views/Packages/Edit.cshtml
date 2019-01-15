@@ -3,7 +3,6 @@
     ViewBag.Title = "Editing: " + Model.PackageId + " " + Model.Version;
     ViewBag.Tab = "Packages";
     ViewBag.MdPageColumns = Constants.ColumnsFormMd;
-    Layout = "~/Views/Shared/Gallery/Layout.cshtml";
 }
 
 <script type="text/html" id="validation-errors">
@@ -19,9 +18,8 @@
                 "_PackageHeading", 
                 new PackageHeadingModel(
                     CurrentUser,
-                    Model.PackageVersions.First(), 
-                    "Edit",
-                    linkIdOnly: true))
+                    Model.PackageRegistration, 
+                    "Edit"))
 
             @if (Model.IsLocked)
             {
@@ -40,16 +38,16 @@
                 <div id="select-package-version-container">
                     <h2>
                         <a href="#" role="button" data-toggle="collapse" data-target="#select-package-version-form"
-                           aria-expanded="false" aria-controls="select-package-version-form" id="show-select-package-version-form">
+                           aria-expanded="true" aria-controls="select-package-version-form" id="show-select-package-version-form">
                             <i class="ms-Icon ms-Icon--ChevronDown" aria-hidden="true"></i>
                             <span>Select Version</span>
                         </a>
                     </h2>
                     <div class="collapse in" id="select-package-version-form" aria-expanded="true">
-                        <form id="cancel-form">
+                        <form aria-hidden="true" id="cancel-form">
                             @Html.AntiForgeryToken()
                         </form>
-                        <form id="select-version-form" enctype="multipart/form-data">
+                        <form aria-label="Select package version to edit" id="select-version-form" enctype="multipart/form-data">
                             @Html.AntiForgeryToken()
 
                             @Html.ValidationSummary(true)
@@ -60,7 +58,7 @@
                                                   new
                                                   {
                                                       @class = "form-control selectpicker show-tick show-menu-arrow btn-block",
-                                                      @title = "Select A Version...",
+                                                      @title = "Select a version",
                                                       @id = "input-select-version"
                                                   })
                                 </label>

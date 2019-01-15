@@ -118,7 +118,7 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="EmailAddressBeingUsed" xml:space="preserve">
-    <value>The email address '{0}' is being used.</value>
+    <value>The email address '{0}' is already in use by a different account.</value>
   </data>
   <data name="UsernameNotAvailable" xml:space="preserve">
     <value>The username '{0}' is not available.</value>
@@ -157,7 +157,7 @@
     <value>A package file is required.</value>
   </data>
   <data name="UploadFileMustBeNuGetPackage" xml:space="preserve">
-    <value>The file must be a .nupkg file.</value>
+    <value>The file must be a .nupkg or .snupkg file.</value>
   </data>
   <data name="SuccessfullyUploadedPackage" xml:space="preserve">
     <value>You successfully uploaded {0} {1}.</value>
@@ -341,9 +341,6 @@ The {1} Team</value>
   </data>
   <data name="TitleMatchesExistingRegistration" xml:space="preserve">
     <value>The title of your package, '{0}', is similar to the ID of an existing package, which can cause confusion with our users. Please modify the title of your package and try uploading again.</value>
-  </data>
-  <data name="NewRegistrationIdMatchesExistingPackageTitle" xml:space="preserve">
-    <value>The ID of your package, '{0}', is similar to the title of an existing package, which can cause confusion with our users. Please modify the ID of your package and try uploading again.</value>
   </data>
   <data name="InvalidPortableFramework" xml:space="preserve">
     <value>The package framework '{0}' is not supported. Frameworks within the portable profile are not allowed to have profiles themselves.</value>
@@ -610,7 +607,7 @@ For more information, please contact '{2}'.</value>
     <value>The request failed to be submitted. Please try again or contact support.</value>
   </data>
   <data name="AccountDelete_SupportRequestTitle" xml:space="preserve">
-    <value>DeleteAccountRequest</value>
+    <value>Account Deletion Request</value>
   </data>
   <data name="MessageIsRequired" xml:space="preserve">
     <value>Please enter a message.</value>
@@ -631,7 +628,7 @@ For more information, please contact '{2}'.</value>
   <data name="UserPackageDeleteDecisionIsRequired" xml:space="preserve">
     <value>You must choose whether to delete the package or contact support.</value>
   </data>
-  <data name="UserPackageDeleteSignature" xml:space="preserve">
+  <data name="AutomatedPackageDeleteSignature" xml:space="preserve">
     <value>(automated)</value>
   </data>
   <data name="UserPackageDeleteSupportRequestMessage" xml:space="preserve">
@@ -669,9 +666,6 @@ For more information, please contact '{2}'.</value>
   </data>
   <data name="AccountDelete_OrganizationDeleteNotImplemented" xml:space="preserve">
     <value>Account '{0}' cannot be deleted because it is an organization. The organization must be manually migrated to a user account without memberships before the account can be deleted.</value>
-  </data>
-  <data name="AccountDelete_OrganizationMemberDeleteNotImplemented" xml:space="preserve">
-    <value>Account '{0}' cannot be deleted because it is a member of an organization. The user needs to be manually removed from any organizations before the account can be deleted.</value>
   </data>
   <data name="PackageIsLocked" xml:space="preserve">
     <value>Package '{0}' has been locked. This means you cannot publish a new version or change the listing status of a published package version. Please contact support@nuget.org.</value>
@@ -729,7 +723,7 @@ For more information, please contact '{2}'.</value>
   </data>
   <data name="AccountIsLinkedToAnotherExternalAccount" xml:space="preserve">
     <value>The account with the email {0} is linked to another Microsoft account.
-If you wish to update the linked Microsoft account you can do so from the account settings page.</value>
+If you would like to update the linked Microsoft account you can do so from the account settings page.</value>
   </data>
   <data name="ChangeCredential_Failed" xml:space="preserve">
     <value>Failed to update the Microsoft account with '{0}'. This could happen if it is already linked to another NuGet account. Contact support for more information.</value>
@@ -844,5 +838,159 @@ If you wish to update the linked Microsoft account you can do so from the accoun
   </data>
   <data name="Organizations_NotSupportedForAccount" xml:space="preserve">
     <value>Account '{0}' does not support organizations.</value>
+  </data>
+  <data name="AccountSelfDelete_Fail" xml:space="preserve">
+    <value>An exception was encoutered while trying to delete the account. Please contact support for assistance.</value>
+  </data>
+  <data name="ValidateCertificate_FileTooLarge" xml:space="preserve">
+    <value>The file exceeds the size limit of {0} bytes.</value>
+  </data>
+  <data name="ValidateCertificate_InvalidEncoding" xml:space="preserve">
+    <value>The file must be a DER encoded binary X.509 certificate.</value>
+  </data>
+  <data name="ValidateCertificate_InvalidFileLength" xml:space="preserve">
+    <value>The file length is invalid.</value>
+  </data>
+  <data name="ValidateCertificate_InvalidFileType" xml:space="preserve">
+    <value>The file extension must be {0}.</value>
+  </data>
+  <data name="ValidateCertificate_InvalidStream" xml:space="preserve">
+    <value>The file stream is invalid.</value>
+  </data>
+  <data name="ValidateCertificate_StreamMustBeSeekable" xml:space="preserve">
+    <value>The file stream must be seekable.</value>
+  </data>
+  <data name="ArgumentCannotBeNullOrEmpty" xml:space="preserve">
+    <value>The argument cannot be null or empty.</value>
+  </data>
+  <data name="CertificateDoesNotExist" xml:space="preserve">
+    <value>The certificate does not exist.</value>
+  </data>
+  <data name="CertificateFileIsRequired" xml:space="preserve">
+    <value>A certificate file is required.</value>
+  </data>
+  <data name="MultiFactorAuth_Enabled" xml:space="preserve">
+    <value>Two-factor authentication is enabled for your account. It will be enforced the next time you log into {0}.</value>
+  </data>
+  <data name="MultiFactorAuth_LoginUpdate" xml:space="preserve">
+    <value>We noticed you used two-factor authentication for login. We have enabled your account to use two-factor authentication going forward.</value>
+  </data>
+  <data name="MultiFactorAuth_Disabled" xml:space="preserve">
+    <value>Two-factor authentication has been disabled for your account. Please close all sessions for Microsoft accounts before you log into {0} to prevent automatic enabling of this setting.</value>
+  </data>
+  <data name="RequiredSigner_AnyWithMixedResult" xml:space="preserve">
+    <value>At least one package owner has no certificate while at least one other package owner has at least one certificate, which means future package submissions may be unsigned or signed with any certificate registered to any owner.</value>
+  </data>
+  <data name="RequiredSigner_AnyWithSignedResult" xml:space="preserve">
+    <value>All package owners have at least one certificate, which means future package submissions must be signed.</value>
+  </data>
+  <data name="RequiredSigner_AnyWithUnsignedResult" xml:space="preserve">
+    <value>All package owners have at least one certificate, which means future package submissions must be signed.</value>
+  </data>
+  <data name="RequiredSigner_Confirm" xml:space="preserve">
+    <value>Are you sure you want to change the required signer for this package?</value>
+  </data>
+  <data name="RequiredSigner_OwnerHasAtLeastOneCertificate" xml:space="preserve">
+    <value>'{0}' currently has at least one certificate, which means future package submissions must be signed.</value>
+  </data>
+  <data name="RequiredSigner_OwnerHasNoCertificate" xml:space="preserve">
+    <value>'{0}' currently has no certificate, which means future package submissions must be unsigned.</value>
+  </data>
+  <data name="RequiredSigner_ThisAction" xml:space="preserve">
+    <value>This action will change the required signer to '{0}' for all future submissions for this package.</value>
+  </data>
+  <data name="DiscontinuedLogin_PasswordRemoved" xml:space="preserve">
+    <value>The password login is discontinued and has been removed for your account. Please use your Microsoft account to log into {0} going forward.</value>
+  </data>
+  <data name="InvalidRecaptchaResponse" xml:space="preserve">
+    <value>Recaptcha response was not valid. Try again or email support if you need assistance.</value>
+  </data>
+  <data name="FailedValidationHardDeleteReason" xml:space="preserve">
+    <value>Automatic hard-delete for reupload of package that failed validation</value>
+  </data>
+  <data name="PackageFileTooLarge" xml:space="preserve">
+    <value>The package file exceeds the size limit. Please try again.</value>
+  </data>
+  <data name="UploadPackage_PackageIsNotSigned" xml:space="preserve">
+    <value>This package must be signed with a registered certificate.</value>
+  </data>
+  <data name="UploadPackage_PackageIsSignedButMissingCertificate_CurrentUserCanManageCertificates" xml:space="preserve">
+    <value>The package was signed. You must register the signing certificate to publish signed packages.</value>
+  </data>
+  <data name="UploadPackage_PackageIsSignedButMissingCertificate_ManageCertificate" xml:space="preserve">
+    <value>You can manage your certificates on the Account Settings page.</value>
+  </data>
+  <data name="UploadPackage_PackageIsSignedButMissingCertificate_RequiredSigner" xml:space="preserve">
+    <value>The package was signed. The owner '{0}' must register the signing certificate to publish signed packages.</value>
+    <comment>{0} is the signer name.</comment>
+  </data>
+  <data name="SecurityPolicy_RequireMicrosoftPackageMetadataComplianceForPush" xml:space="preserve">
+    <value>The package is not compliant with metadata requirements for Microsoft packages on NuGet.org. Go to https://aka.ms/Microsoft-NuGet-Compliance for more information.
+Policy violations: {0}</value>
+  </data>
+  <data name="SecurityPolicy_RequirePackagePrefixReserved" xml:space="preserve">
+    <value>You have not published a package with this prefix in the past. This means other users may be able to push packages starting with the same prefix. Contact account@nuget.org to reserve the prefix. Go to https://docs.microsoft.com/en-us/nuget/reference/id-prefix-reservation to learn more about Package ID prefix reservation.</value>
+  </data>
+  <data name="SecurityPolicy_CopyrightNotCompliant" xml:space="preserve">
+    <value>The package metadata contains a non-compliant copyright element.</value>
+  </data>
+  <data name="SecurityPolicy_RequiredAuthorMissing" xml:space="preserve">
+    <value>The package metadata is missing required author '{0}'.</value>
+  </data>
+  <data name="SecurityPolicy_RequiredLicenseUrlMissing" xml:space="preserve">
+    <value>The package metadata is missing required LicenseUrl.</value>
+  </data>
+  <data name="SecurityPolicy_RequiredProjectUrlMissing" xml:space="preserve">
+    <value>The package metadata is missing required ProjectUrl.</value>
+  </data>
+  <data name="SymbolsPackage_PackageIdAndVersionNotFound" xml:space="preserve">
+    <value>A package with ID '{0}' and version '{1}' does not exist. Please upload the package before uploading its symbols.</value>
+  </data>
+  <data name="SymbolsPackage_NotSymbolPackage" xml:space="preserve">
+    <value>The uploaded package is not a valid symbols package. The required 'SymbolsPackage' package type is missing.</value>
+  </data>
+  <data name="SymbolsPackage_FailedToReadPackage" xml:space="preserve">
+    <value>Failed to read the symbols package. Ensure it is a valid symbols package (.snupkg).</value>
+  </data>
+  <data name="SymbolsPackage_InvalidDataInNuspec" xml:space="preserve">
+    <value>Invalid metadata items specified in nuspec. Please remove '{0}' from the nuspec.</value>
+  </data>
+  <data name="SymbolsPackage_InvalidFiles" xml:space="preserve">
+    <value>Invalid file found in the uploaded package. Symbols packages should only contain '{0}' files.</value>
+  </data>
+  <data name="SymbolsPackage_UploadNotAllowed" xml:space="preserve">
+    <value>You do not have the permissions to upload symbol packages.</value>
+  </data>
+  <data name="SymbolsPackage_ConflictValidating" xml:space="preserve">
+    <value>It looks like there is another copy of this symbols package pending validation(s). Please wait for the validation(s) to finish before trying to replace the symbols package.</value>
+  </data>
+  <data name="UploadPackage_SignedToUnsignedTransition" xml:space="preserve">
+    <value>The previous package version '{0}' is author signed but the uploaded package is unsigned. To avoid this warning, sign the package before uploading.</value>
+    <comment>{0} is the previous package's normalized version.</comment>
+  </data>
+  <data name="SymbolsPackage_PackageNotAvailable" xml:space="preserve">
+    <value>No available symbols package found for ID {0} and version {1}.</value>
+  </data>
+  <data name="AddMember_NameIsEmail" xml:space="preserve">
+    <value>You must add a member by username, not an email address.</value>
+  </data>
+  <data name="AddOwner_NameIsEmail" xml:space="preserve">
+    <value>You must add an owner by username, not an email address.</value>
+  </data>
+  <data name="TransformAccount_AdminNameIsEmail" xml:space="preserve">
+    <value>You must choose an administrator by username, not an email address.</value>
+  </data>
+  <data name="WarningNotHttpsOrGitRepositoryUrlScheme" xml:space="preserve">
+    <value>Repository URL scheme should be 'https' or 'git'. The provided URL will not be displayed.</value>
+  </data>
+  <data name="WarningNotHttpsRepositoryUrlScheme" xml:space="preserve">
+    <value>Repository URL scheme should be 'https'. The provided URL will not be displayed.</value>
+  </data>
+  <data name="UploadPackage_PackageContainsTooManyEntries" xml:space="preserve">
+    <value>The package contains too many files and/or folders.</value>
+  </data>
+  <data name="TyposquattingCheckFails" xml:space="preserve">
+    <value>The uploaded package's id is too similar to the already existing packages: {0} </value>
+    <comment>{0} is the existing collision Ids compared with the uploaded package Id.</comment>
   </data>
 </root>

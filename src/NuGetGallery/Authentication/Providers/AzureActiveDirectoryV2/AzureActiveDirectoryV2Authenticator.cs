@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using System.Web.Mvc;
@@ -43,7 +44,10 @@ namespace NuGetGallery.Authentication.Providers.AzureActiveDirectoryV2
         public static readonly string V2CommonTenant = "common";
         public static readonly string Authority = "https://login.microsoftonline.com/{0}/v2.0";
 
+        private static string _callbackPath = "users/account/authenticate/return";
         private static HashSet<string> _errorMessageList = new HashSet<string> { "access_denied", "consent_required" };
+        private static HashSet<string> _alternateSiteRootList;
+        private const string SELECT_ACCOUNT = "select_account";
 
         /// <summary>
         /// The possible values returned by <see cref="V2Claims.ACR"/> claim, and also the possible token values to be sent
@@ -72,10 +76,22 @@ namespace NuGetGallery.Authentication.Providers.AzureActiveDirectoryV2
                 siteRoot = siteRoot.Replace("http://", "https://");
             }
 
+            if (!string.IsNullOrWhiteSpace(config.Current.AlternateSiteRootList))
+            {
+                var alternateSiteRootList = config
+                    .Current
+                    .AlternateSiteRootList
+                    .Split(';')
+                    .Select(d => d.Trim())
+                    .ToArray();
+
+                _alternateSiteRootList = new HashSet<string>(alternateSiteRootList, StringComparer.OrdinalIgnoreCase);
+            }
+
             // Configure OpenIdConnect
             var options = new OpenIdConnectAuthenticationOptions(BaseConfig.AuthenticationType)
             {
-                RedirectUri = siteRoot + "users/account/authenticate/return",
+                RedirectUri = siteRoot + _callbackPath,
                 PostLogoutRedirectUri = siteRoot,
                 Scope = OpenIdConnectScopes.OpenIdProfile + " email",
                 ResponseType = OpenIdConnectResponseTypes.CodeIdToken,
@@ -199,7 +215,8 @@ namespace NuGetGallery.Authentication.Providers.AzureActiveDirectoryV2
         }
 
         /// <summary>
-        /// Before redirecting for authentication to the provider, append the properties for Multi-Factor Authentication.
+        /// Before redirecting for authentication to the provider, append the properties for Multi-Factor Authentication
+        /// and configuration settings.
         /// </summary>
         /// <param name="notification">The properties used for authentication</param>
         /// <returns>awaitable Task</returns>
@@ -220,6 +237,15 @@ namespace NuGetGallery.Authentication.Providers.AzureActiveDirectoryV2
             {
                 notification.ProtocolMessage.AcrValues = ACR_VALUES.ANY;
             }
+
+            // Set the redirect_uri token for the alternate domains of same gallery instance
+            if (_alternateSiteRootList != null && _alternateSiteRootList.Contains(notification.Request.Uri.Host))
+            {
+                notification.ProtocolMessage.RedirectUri = "https://" + notification.Request.Uri.Host + "/" + _callbackPath ;
+            }
+
+            // We always want to show the options to select account when signing in and while changing account.
+            notification.ProtocolMessage.Prompt = SELECT_ACCOUNT;
 
             return Task.FromResult(0);
         }

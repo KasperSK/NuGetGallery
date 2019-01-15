@@ -2,14 +2,10 @@
 @using NuGetGallery.Authentication
 @{
     ViewBag.Title = "API Keys";
-    ViewBag.MdPageColumns = Constants.ColumnsFormMd;
-    Layout = "~/Views/Shared/Gallery/Layout.cshtml";
 }
 
 <section role="main" class="container main-container page-api-keys">
-    <form id="AntiForgeryForm">
-        @Html.AntiForgeryToken()
-    </form>
+    @ViewHelpers.AjaxAntiForgeryToken(Html)
     <div class="row">
         <div class="@ViewHelpers.GetColumnClasses(ViewBag)">
             @ViewHelpers.BreadcrumbWithProfile(Url, CurrentUser, true, @<text>API keys</text>)
@@ -129,16 +125,24 @@
                 <ul class="list-inline icon-details" role="presentation">
                     <li>
                         <i class="ms-Icon ms-Icon--Stopwatch" aria-hidden="true"></i>
-                        <!-- ko if: Expires -->
                         <!-- ko if: HasExpired -->
                         Expired
                         <!-- /ko -->
                         <!-- ko ifnot: HasExpired -->
+                        <!-- ko if: Expires -->
                         Expires <span data-bind="text: moment(Expires()).fromNow()"></span>
-                        <!-- /ko -->
                         <!-- /ko -->
                         <!-- ko ifnot: Expires -->
                         Never expires
+                        @if (Config.Current.ExpirationInDaysForApiKeyV1 > 0)
+                        {
+                            <text>
+                            (<a href="https://aka.ms/nugetlegacyapikeys">if used every
+                            @Config.Current.ExpirationInDaysForApiKeyV1
+                            day@(Config.Current.ExpirationInDaysForApiKeyV1 != 1 ? "s" : string.Empty)</a>)
+                            </text>
+                        }
+                        <!-- /ko -->
                         <!-- /ko -->
                     </li>
                     <li>
@@ -347,7 +351,7 @@
             <div class="col-sm-12">
                 <b class="ms-fontSize-xl">Select Packages</b>
                 <p>
-                    To select which pages to associate with a key, use a glob pattern, select
+                    To select which packages to associate with a key, use a glob pattern, select
                     individual packages, or both.
                 </p>
                 <div class="has-error">

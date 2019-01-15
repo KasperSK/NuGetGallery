@@ -2,39 +2,35 @@
 @{
     ViewBag.Title = "Upload Package";
     ViewBag.Tab = "Upload";
-    ViewBag.MdPageColumns = Constants.ColumnsFormMd;
-    Layout = "~/Views/Shared/Gallery/Layout.cshtml";
 }
 
 <section role="main" class="container main-container page-upload">
     <div class="row">
         <div class="@ViewHelpers.GetColumnClasses(ViewBag)">
             @ViewHelpers.PackagesBreadcrumb(Url, CurrentUser, true, @<text>Upload</text>)
-            <div class="page-subheading text-center">
+            <div class="text-left">
                 <p class="message">Your package file will be uploaded and hosted on the @(Config.Current.Brand) server (@(Config.Current.SiteRoot)).</p>
             </div>
             <div id="upload-package-container">
                 <h2>
                     <a href="#" role="button" data-toggle="collapse" data-target="#upload-package-form"
-                       aria-expanded="false" aria-controls="upload-package-form" id="show-upload-package-form">
+                       aria-expanded="true" aria-controls="upload-package-form" id="show-upload-package-form">
                         <i class="ms-Icon ms-Icon--ChevronDown" aria-hidden="true"></i>
                         <span>Upload</span>
                     </a>
                 </h2>
                 <div class="collapse in" id="upload-package-form" aria-expanded="true">
-                    <form id="cancel-form">
+                    <form aria-hidden="true" id="cancel-form">
                         @Html.AntiForgeryToken()
                     </form>
-                    <form id="uploadForm" enctype="multipart/form-data">
+                    <form aria-label="Upload a package" id="uploadForm" enctype="multipart/form-data">
                         @Html.AntiForgeryToken()
-
-                        @Html.ValidationSummary(true)
 
                         <div class="input-group">
                             <input type="text" class="form-control" id="file-select-feedback" value="Browse or Drop files to select a package..." aria-label="Upload Your Package" readonly />
                             <label for="input-select-file" id="PackageFileLabel" class="input-group-btn">
                                 <span id="browse-for-package-button" class="btn btn-primary form-control" tabindex="0" aria-label="Browse for package" role="button">
-                                    Browse&hellip;<input type="file" name="UploadFile" accept=".nupkg" aria-labelledby="PackageFileLabel" id="input-select-file" style="display:none;" />
+                                    Browse&hellip;<input type="file" name="UploadFile" accept=".nupkg,.snupkg" aria-labelledby="PackageFileLabel" id="input-select-file" style="display:none;" />
                                 </span>
                             </label>
                         </div>
@@ -49,18 +45,10 @@
                 </div>
             </div>
 
-
             @if (Model != null && Model.IsUploadInProgress)
             {
                 <div id="warning-container">
-                    @ViewHelpers.AlertWarning(@<text>You had an upload in progress. You can continue it here or cancel to restart.</text>                    )
-                    @ViewHelpers.AlertPackageVerifyRecommendation()
-                </div>
-            }
-            else
-            {
-                <div id="verify-warning-container" class="hidden">
-                    @ViewHelpers.AlertPackageVerifyRecommendation()
+                    @ViewHelpers.AlertInfo(@<text>You had an upload in progress. You can continue it here or cancel to restart.</text>)
                 </div>
             }
 
@@ -78,13 +66,7 @@
         var InProgressPackage = @Html.Raw(Json.Encode(Model.InProgressUpload));
         window.nuget.configureExpanderHeading("upload-package-form");
         $(function () {
-            $("#browse-for-package-button").on("keypress", function (e) {
-                var code = (e.keyCode || e.which);
-                var isInteract = (code == 13 /*enter*/ || code == 32 /*space*/) && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
-                if (isInteract) {
-                    $(this).click();
-                }
-            });
+            nuget.configureFileInputButton("browse-for-package-button");
 
             AsyncFileUploadManager.init(
                 '@Url.UploadPackageProgress()',
@@ -92,7 +74,8 @@
                 '@Scripts.Url("~/Scripts/jquery")',
                 '@Url.UploadPackage()',
                 '@Url.CancelUpload()',
-                '@Url.VerifyPackage()');
+                '@Url.VerifyPackage()',
+                '@Guid.NewGuid()');
         });
     </script>
 }

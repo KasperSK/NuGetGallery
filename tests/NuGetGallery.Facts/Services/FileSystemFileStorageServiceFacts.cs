@@ -119,6 +119,17 @@ namespace NuGetGallery
             }
 
             [Fact]
+            public async Task WillSetTheResultContentTypeForTheSymbolPackagesFolder()
+            {
+                var service = CreateService();
+
+                var result = await service.CreateDownloadFileActionResultAsync(HttpRequestUrl, CoreConstants.SymbolPackagesFolderName, "theFileName") as FilePathResult;
+
+                Assert.NotNull(result);
+                Assert.Equal(CoreConstants.PackageContentType, result.ContentType);
+            }
+
+            [Fact]
             public async Task WillSetTheResultDownloadFilePath()
             {
                 var service = CreateService();
@@ -362,7 +373,7 @@ namespace NuGetGallery
                     _destFileName,
                     new MemoryStream(Encoding.ASCII.GetBytes(content)));
 
-                await Assert.ThrowsAsync<InvalidOperationException>(
+                await Assert.ThrowsAsync<FileAlreadyExistsException>(
                     () => _target.CopyFileAsync(
                         _srcFolderName,
                         _srcFileName,
@@ -386,7 +397,7 @@ namespace NuGetGallery
                     new MemoryStream(Encoding.ASCII.GetBytes("Something else.")));
 
                 // Act & Assert
-                await Assert.ThrowsAsync<InvalidOperationException>(
+                await Assert.ThrowsAsync<FileAlreadyExistsException>(
                     () => _target.CopyFileAsync(
                         _srcFolderName,
                         _srcFileName,
@@ -576,7 +587,7 @@ namespace NuGetGallery
                     fakeFileSystemService.Setup(x => x.FileExists(It.IsAny<string>())).Returns(true);
                     var service = CreateService(fileSystemService: fakeFileSystemService);
 
-                    await Assert.ThrowsAsync<InvalidOperationException>(async () => await service.SaveFileAsync(FolderName, FileName, fakeFileStream, false));
+                    await Assert.ThrowsAsync<FileAlreadyExistsException>(async () => await service.SaveFileAsync(FolderName, FileName, fakeFileStream, false));
 
                     fakeFileSystemService.Verify();
                 }
@@ -639,7 +650,7 @@ namespace NuGetGallery
                     File.WriteAllText(filePath, FileContent);
 
                     // Act
-                    var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.SaveFileAsync(
+                    var exception = await Assert.ThrowsAsync<FileAlreadyExistsException>(() => service.SaveFileAsync(
                         FolderName,
                         FileName,
                         new MemoryStream(),
@@ -709,6 +720,17 @@ namespace NuGetGallery
                 {
                     return false;
                 }
+            }
+        }
+
+        public class TheSetMetadataAsyncMethod
+        {
+            [Fact]
+            public async Task NoOps()
+            {
+                var service = CreateService();
+
+                await service.SetMetadataAsync(folderName: null, fileName: null, updateMetadataAsync: null);
             }
         }
     }

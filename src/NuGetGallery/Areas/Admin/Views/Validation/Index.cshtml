@@ -14,7 +14,7 @@
     }
 }
 
-<section>
+<section role="main" class="container main-container">
     <h2>Package Validations</h2>
 
     <form method="get" action="@Url.Action(actionName: "Search")">
@@ -52,19 +52,19 @@
                 @switch (package.DeletedStatus)
                 {
                     case PackageDeletedStatus.Unknown:
-                        <i>This package was hard deleted.</i><br />
+                        <i>This @package.ValidatingType.ToString().ToLower() was hard deleted.</i><br />
                         break;
                     case PackageDeletedStatus.SoftDeleted:
-                        <i>This package was soft deleted.</i><br />
+                        <i>This @package.ValidatingType.ToString().ToLower() was soft deleted.</i><br />
                         break;
                 }
 
-                <b>Package Key:</b> @package.PackageKey<br />
-                @if (package.DeletedStatus == PackageDeletedStatus.NotDeleted)
+                <b>@package.ValidatingType Key:</b> @package.PackageKey<br />
+                @if (package.DeletedStatus == PackageDeletedStatus.NotDeleted && package.ValidatingType == ValidatingType.Package )
                 {
                     <a href="@Url.RevalidatePackage(package.Id, package.NormalizedVersion)">Revalidate</a><br />
                 }
-                
+
                 @if (package.DeletedStatus != PackageDeletedStatus.Unknown)
                 {
                     <a href="@Url.Package(package.Id, package.NormalizedVersion)">Package Details</a>
@@ -90,7 +90,7 @@
                     }
                     else
                     {
-                        <table class="sexy-table" style="width: 100%">
+                        <table class="table" style="width: 100%">
                             <thead>
                                 <tr>
                                     <th>Key</th>
@@ -138,9 +138,4 @@
             }
         </div>
     }
-
 </section>
-
-@section BottomScripts {
-    @Scripts.Render("~/Scripts/gallery/site.min.js")
-}

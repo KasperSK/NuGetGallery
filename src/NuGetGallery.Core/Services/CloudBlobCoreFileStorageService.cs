@@ -30,14 +30,19 @@ namespace NuGetGallery
         private static readonly HashSet<string> KnownPublicFolders = new HashSet<string> {
             CoreConstants.PackagesFolderName,
             CoreConstants.PackageBackupsFolderName,
-            CoreConstants.DownloadsFolderName
+            CoreConstants.DownloadsFolderName,
+            CoreConstants.SymbolPackagesFolderName,
+            CoreConstants.SymbolPackageBackupsFolderName
         };
 
         private static readonly HashSet<string> KnownPrivateFolders = new HashSet<string> {
             CoreConstants.ContentFolderName,
             CoreConstants.UploadsFolderName,
             CoreConstants.PackageReadMesFolderName,
-            CoreConstants.ValidationFolderName
+            CoreConstants.ValidationFolderName,
+            CoreConstants.UserCertificatesFolderName,
+            CoreConstants.RevalidationFolderName,
+            CoreConstants.StatusFolderName,
         };
 
         protected readonly ICloudBlobClient _client;
@@ -177,6 +182,14 @@ namespace NuGetGallery
                 IfMatchETag = destAccessCondition.IfMatchETag,
             };
 
+            if (!await srcBlob.ExistsAsync())
+            {
+                _trace.TraceEvent(
+                    TraceEventType.Warning,
+                    id: 0,
+                    message: $"Before calling FetchAttributesAsync(), the source blob '{srcBlob.Name}' does not exist.");
+            }
+
             // Determine the source blob etag.
             await srcBlob.FetchAttributesAsync();
             var srcAccessCondition = AccessCondition.GenerateIfMatchCondition(srcBlob.ETag);
@@ -231,9 +244,9 @@ namespace NuGetGallery
                     srcAccessCondition,
                     mappedDestAccessCondition);
             }
-            catch (StorageException ex) when (ex.RequestInformation?.HttpStatusCode == (int?)HttpStatusCode.Conflict)
+            catch (StorageException ex) when (ex.IsFileAlreadyExistsException())
             {
-                throw new InvalidOperationException(
+                throw new FileAlreadyExistsException(
                     String.Format(
                         CultureInfo.CurrentCulture,
                         "There is already a blob with name {0} in container {1}.",
@@ -246,6 +259,14 @@ namespace NuGetGallery
             while (destBlob.CopyState.Status == CopyStatus.Pending
                    && stopwatch.Elapsed < MaxCopyDuration)
             {
+                if (!await destBlob.ExistsAsync())
+                {
+                    _trace.TraceEvent(
+                        TraceEventType.Warning,
+                        id: 0,
+                        message: $"Before calling FetchAttributesAsync(), the destination blob '{destBlob.Name}' does not exist.");
+                }
+
                 await destBlob.FetchAttributesAsync();
                 await Task.Delay(CopyPollFrequency);
             }
@@ -276,18 +297,51 @@ namespace NuGetGallery
             return "(none)";
         }
 
-        public async Task SaveFileAsync(string folderName, string fileName, Stream packageFile, bool overwrite = true)
+        public async Task SaveFileAsync(string folderName, string fileName, Stream file, bool overwrite = true)
         {
             ICloudBlobContainer container = await GetContainerAsync(folderName);
             var blob = container.GetBlobReference(fileName);
 
             try
             {
-                await blob.UploadFromStreamAsync(packageFile, overwrite);
+                await blob.UploadFromStreamAsync(file, overwrite);
             }
-            catch (StorageException ex) when (ex.RequestInformation?.HttpStatusCode == (int?)HttpStatusCode.Conflict)
+            catch (StorageException ex) when (ex.IsFileAlreadyExistsException())
             {
-                throw new InvalidOperationException(
+                throw new FileAlreadyExistsException(
+                    String.Format(
+                        CultureInfo.CurrentCulture,
+                        "There is already a blob with name {0} in container {1}.",
+                        fileName,
+                        folderName),
+                    ex);
+            }
+
+            blob.Properties.ContentType = GetContentType(folderName);
+            blob.Properties.CacheControl = GetCacheControl(folderName);
+            await blob.SetPropertiesAsync();
+        }
+
+        public async Task SaveFileAsync(string folderName, string fileName, Stream file, IAccessCondition accessConditions)
+        {
+            ICloudBlobContainer container = await GetContainerAsync(folderName);
+            var blob = container.GetBlobReference(fileName);
+
+            accessConditions = accessConditions ?? AccessConditionWrapper.GenerateIfNotExistsCondition();
+
+            var mappedAccessCondition = new AccessCondition
+            {
+                IfNoneMatchETag = accessConditions.IfNoneMatchETag,
+                IfMatchETag = accessConditions.IfMatchETag,
+            };
+
+            try
+            {
+                await blob.UploadFromStreamAsync(file, mappedAccessCondition);
+            }
+            catch (StorageException ex) when (ex.IsFileAlreadyExistsException())
+            {
+                throw new FileAlreadyExistsException(
                     String.Format(
                         CultureInfo.CurrentCulture,
                         "There is already a blob with name {0} in container {1}.",
@@ -325,6 +379,55 @@ namespace NuGetGallery
             return new Uri(
                 blob.Uri,
                 blob.GetSharedAccessSignature(SharedAccessBlobPermissions.Read, endOfAccess));
+        }
+
+        /// <summary>
+        /// Asynchronously sets blob metadata.
+        /// </summary>
+        /// <param name="folderName">The folder (container) name.</param>
+        /// <param name="fileName">The blob file name.</param>
+        /// <param name="updateMetadataAsync">A function which updates a metadata dictionary and returns <c>true</c>
+        /// for changes to be persisted or <c>false</c> for changes to be discarded.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        public async Task SetMetadataAsync(
+            string folderName,
+            string fileName,
+            Func<Lazy<Task<Stream>>, IDictionary<string, string>, Task<bool>> updateMetadataAsync)
+        {
+            if (folderName == null)
+            {
+                throw new ArgumentNullException(nameof(folderName));
+            }
+
+            if (fileName == null)
+            {
+                throw new ArgumentNullException(nameof(fileName));
+            }
+
+            if (updateMetadataAsync == null)
+            {
+                throw new ArgumentNullException(nameof(updateMetadataAsync));
+            }
+
+            var container = await GetContainerAsync(folderName);
+            var blob = container.GetBlobReference(fileName);
+
+            await blob.FetchAttributesAsync();
+
+            var lazyStream = new Lazy<Task<Stream>>(() => GetFileAsync(folderName, fileName));
+            var wasUpdated = await updateMetadataAsync(lazyStream, blob.Metadata);
+
+            if (wasUpdated)
+            {
+                var accessCondition = AccessConditionWrapper.GenerateIfMatchCondition(blob.ETag);
+                var mappedAccessCondition = new AccessCondition
+                {
+                    IfNoneMatchETag = accessCondition.IfNoneMatchETag,
+                    IfMatchETag = accessCondition.IfMatchETag
+                };
+
+                await blob.SetMetadataAsync(mappedAccessCondition);
+            }
         }
 
         private static SharedAccessBlobPermissions MapFileUriPermissions(FileUriPermissions permissions)
@@ -390,10 +493,10 @@ namespace NuGetGallery
             try
             {
                 await blob.DownloadToStreamAsync(
-                    stream, 
-                    accessCondition: 
-                        ifNoneMatch == null ? 
-                        null : 
+                    stream,
+                    accessCondition:
+                        ifNoneMatch == null ?
+                        null :
                         AccessCondition.GenerateIfNoneMatchCondition(ifNoneMatch));
             }
             catch (StorageException ex)
@@ -404,7 +507,7 @@ namespace NuGetGallery
                 {
                     return new StorageResult(HttpStatusCode.NotModified, null);
                 }
-                else if (ex.RequestInformation.ExtendedErrorInformation.ErrorCode == BlobErrorCodeStrings.BlobNotFound)
+                else if (ex.RequestInformation.ExtendedErrorInformation?.ErrorCode == BlobErrorCodeStrings.BlobNotFound)
                 {
                     return new StorageResult(HttpStatusCode.NotFound, null);
                 }
@@ -437,6 +540,8 @@ namespace NuGetGallery
                 case CoreConstants.PackageBackupsFolderName:
                 case CoreConstants.UploadsFolderName:
                 case CoreConstants.ValidationFolderName:
+                case CoreConstants.SymbolPackagesFolderName:
+                case CoreConstants.SymbolPackageBackupsFolderName:
                     return CoreConstants.PackageContentType;
 
                 case CoreConstants.DownloadsFolderName:
@@ -444,6 +549,40 @@ namespace NuGetGallery
 
                 case CoreConstants.PackageReadMesFolderName:
                     return CoreConstants.TextContentType;
+
+                case CoreConstants.ContentFolderName:
+                case CoreConstants.RevalidationFolderName:
+                case CoreConstants.StatusFolderName:
+                    return CoreConstants.JsonContentType;
+
+                case CoreConstants.UserCertificatesFolderName:
+                    return CoreConstants.CertificateContentType;
+
+                default:
+                    throw new InvalidOperationException(
+                        String.Format(CultureInfo.CurrentCulture, "The folder name {0} is not supported.", folderName));
+            }
+        }
+
+        private static string GetCacheControl(string folderName)
+        {
+            switch (folderName)
+            {
+                case CoreConstants.PackagesFolderName:
+                case CoreConstants.SymbolPackagesFolderName:
+                    return CoreConstants.DefaultCacheControl;
+
+                case CoreConstants.PackageBackupsFolderName:
+                case CoreConstants.UploadsFolderName:
+                case CoreConstants.ValidationFolderName:
+                case CoreConstants.SymbolPackageBackupsFolderName:
+                case CoreConstants.DownloadsFolderName:
+                case CoreConstants.PackageReadMesFolderName:
+                case CoreConstants.ContentFolderName:
+                case CoreConstants.RevalidationFolderName:
+                case CoreConstants.StatusFolderName:
+                case CoreConstants.UserCertificatesFolderName:
+                    return null;
 
                 default:
                     throw new InvalidOperationException(
@@ -466,16 +605,13 @@ namespace NuGetGallery
 
         private struct StorageResult
         {
-            private HttpStatusCode _statusCode;
-            private Stream _data;
-
-            public HttpStatusCode StatusCode { get { return _statusCode; } }
-            public Stream Data { get { return _data; } }
+            public HttpStatusCode StatusCode { get; }
+            public Stream Data { get; }
 
             public StorageResult(HttpStatusCode statusCode, Stream data)
             {
-                _statusCode = statusCode;
-                _data = data;
+                StatusCode = statusCode;
+                Data = data;
             }
         }
     }

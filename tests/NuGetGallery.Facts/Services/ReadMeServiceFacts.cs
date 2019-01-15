@@ -151,6 +151,33 @@ namespace NuGetGallery
                     x => x.SaveChangesAsync(),
                     commitChanges ? Times.Once() : Times.Never());
             }
+
+            [Theory]
+            [InlineData(true)]
+            [InlineData(false)]
+            public async Task ThrowsArgumentExceptionWhenReadmeUrlHostInvalid(bool commitChanges)
+            {
+                // Arrange
+                _package.HasReadMe = true;
+                _packageFileService.Setup(m => m.DownloadReadMeMdFileAsync(_package)).ReturnsAsync((string)null);
+                _edit.ReadMe = new ReadMeRequest { SourceUrl = "https://github.com/username/markdown-here/blob/master/README.md", SourceType = "url" };
+                _edit.ReadMeState = PackageEditReadMeState.Changed;
+
+                // Act
+                var saveTask = _target.SaveReadMeMdIfChanged(
+                    _package,
+                    _edit,
+                    _encoding,
+                    commitChanges);
+
+                // Assert
+                var exception = await Assert.ThrowsAsync<ArgumentException>(() => saveTask);
+
+                Assert.Contains(Strings.ReadMeUrlHostInvalid, exception.Message);
+                _entitiesContext.Verify(
+                    x => x.SaveChangesAsync(),
+                    Times.Never());
+            }
         }
 
         public class TheHasReadMeSourceMethod
@@ -284,7 +311,7 @@ namespace NuGetGallery
             public async Task WhenMaxLengthExceeded_ThrowsInvalidOperationException(string sourceType)
             {
                 // Arrange.
-                var request = ReadMeServiceFacts.GetReadMeRequest(ReadMeService.TypeWritten, LargeMarkdown);
+                var request = ReadMeServiceFacts.GetReadMeRequest(sourceType, LargeMarkdown);
 
                 // Act & Assert.
                 await Assert.ThrowsAsync<InvalidOperationException>(() => ReadMeService.GetReadMeMdAsync(request, Encoding.UTF8));
@@ -321,7 +348,7 @@ namespace NuGetGallery
             public async Task WhenInvalidUrl_ThrowsInvalidOperationException(string url)
             {
                 // Arrange.
-                var request = ReadMeServiceFacts.GetReadMeRequest(ReadMeService.TypeUrl, "markdown");
+                var request = ReadMeServiceFacts.GetReadMeRequest(ReadMeService.TypeUrl, "markdown", url: url);
 
                 // Act & Assert.
                 await Assert.ThrowsAsync<ArgumentException>(() => ReadMeService.GetReadMeMdAsync(request, Encoding.UTF8));

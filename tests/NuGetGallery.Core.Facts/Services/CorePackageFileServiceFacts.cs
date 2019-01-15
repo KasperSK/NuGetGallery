@@ -55,7 +55,7 @@ namespace NuGetGallery
 
                 var ex = Assert.Throws<ArgumentException>(() => service.SavePackageFileAsync(package, CreatePackageFileStream()).Wait());
 
-                Assert.True(ex.Message.StartsWith("The package is missing required data."));
+                Assert.StartsWith("The package is missing required data.", ex.Message);
                 Assert.Equal("package", ex.ParamName);
             }
 
@@ -68,7 +68,7 @@ namespace NuGetGallery
 
                 var ex = Assert.Throws<ArgumentException>(() => service.SavePackageFileAsync(package, CreatePackageFileStream()).Wait());
 
-                Assert.True(ex.Message.StartsWith("The package is missing required data."));
+                Assert.StartsWith("The package is missing required data.", ex.Message);
                 Assert.Equal("package", ex.ParamName);
             }
 
@@ -81,7 +81,7 @@ namespace NuGetGallery
 
                 var ex = Assert.Throws<ArgumentException>(() => service.SavePackageFileAsync(package, CreatePackageFileStream()).Wait());
 
-                Assert.True(ex.Message.StartsWith("The package is missing required data."));
+                Assert.StartsWith("The package is missing required data.", ex.Message);
                 Assert.Equal("package", ex.ParamName);
             }
 
@@ -130,17 +130,19 @@ namespace NuGetGallery
                 fileStorageSvc.VerifyAll();
             }
 
-            [Fact]
-            public async Task WillSaveTheFileStreamViaTheFileStorageService()
+            [Theory]
+            [InlineData(true)]
+            [InlineData(false)]
+            public async Task WillSaveTheFileStreamViaTheFileStorageServiceAndOverwriteIfneeded(bool overwrite)
             {
                 var fileStorageSvc = new Mock<ICoreFileStorageService>();
                 var fakeStream = new MemoryStream();
                 var service = CreateService(fileStorageService: fileStorageSvc);
-                fileStorageSvc.Setup(x => x.SaveFileAsync(It.IsAny<string>(), It.IsAny<string>(), fakeStream, It.Is<bool>(b => !b)))
+                fileStorageSvc.Setup(x => x.SaveFileAsync(It.IsAny<string>(), It.IsAny<string>(), fakeStream, overwrite))
                     .Completes()
                     .Verifiable();
 
-                await service.SavePackageFileAsync(CreatePackage(), fakeStream);
+                await service.SavePackageFileAsync(CreatePackage(), fakeStream, overwrite);
 
                 fileStorageSvc.VerifyAll();
             }
@@ -529,7 +531,7 @@ namespace NuGetGallery
 
                 var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.StorePackageFileInBackupLocationAsync(package, CreatePackageFileStream()));
 
-                Assert.True(ex.Message.StartsWith("The package is missing required data."));
+                Assert.StartsWith("The package is missing required data.", ex.Message);
                 Assert.Equal("package", ex.ParamName);
             }
 
@@ -542,7 +544,7 @@ namespace NuGetGallery
 
                 var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.StorePackageFileInBackupLocationAsync(package, CreatePackageFileStream()));
 
-                Assert.True(ex.Message.StartsWith("The package is missing required data."));
+                Assert.StartsWith("The package is missing required data.", ex.Message);
                 Assert.Equal("package", ex.ParamName);
             }
 
@@ -555,7 +557,7 @@ namespace NuGetGallery
 
                 var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.StorePackageFileInBackupLocationAsync(package, CreatePackageFileStream()));
 
-                Assert.True(ex.Message.StartsWith("The package is missing required data."));
+                Assert.StartsWith("The package is missing required data.", ex.Message);
                 Assert.Equal("package", ex.ParamName);
             }
 
@@ -694,14 +696,14 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public async Task WillSwallowInvalidOperationException()
+            public async Task WillSwallowFileAlreadyExistsException()
             {
                 var fileStorageSvc = new Mock<ICoreFileStorageService>();
                 var fakeStream = new MemoryStream();
                 var service = CreateService(fileStorageService: fileStorageSvc);
                 fileStorageSvc
                     .Setup(x => x.SaveFileAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(), It.IsAny<bool>()))
-                    .Throws(new InvalidOperationException("File already exists."));
+                    .Throws(new FileAlreadyExistsException("File already exists."));
 
                 var package = CreatePackage();
 
@@ -772,7 +774,7 @@ namespace NuGetGallery
             fileStorageService = fileStorageService ?? new Mock<ICoreFileStorageService>();
 
             return new CorePackageFileService(
-                fileStorageService.Object);
+                fileStorageService.Object, new PackageFileMetadataService());
         }
 
         public abstract class FactsBase

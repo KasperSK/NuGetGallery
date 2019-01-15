@@ -14,6 +14,7 @@ using NuGetGallery.Framework;
 using NuGetGallery.Packaging;
 using Xunit;
 using NuGetGallery.TestUtils;
+using NuGetGallery.Security;
 
 namespace NuGetGallery
 {
@@ -166,32 +167,32 @@ namespace NuGetGallery
 
 #pragma warning disable 0618
                 Assert.Equal(2, result.Authors.Count);
-                Assert.True(result.Authors.Any(a => a.Name == "authora"));
-                Assert.True(result.Authors.Any(a => a.Name == "authorb"));
+                Assert.Contains(result.Authors, a => a.Name == "authora");
+                Assert.Contains(result.Authors, a => a.Name == "authorb");
 #pragma warning restore 0618
                 Assert.Equal("authora, authorb", result.FlattenedAuthors);
 
-                Assert.Equal(false, result.RequiresLicenseAcceptance);
+                Assert.False(result.RequiresLicenseAcceptance);
                 Assert.Equal("package A description.", result.Description);
                 Assert.Equal("en-US", result.Language);
 
                 Assert.Equal("WebActivator:[1.1.0, ):net40|PackageC:[1.1.0, 2.0.1):net40|jQuery:[1.0.0, ):net451", result.FlattenedDependencies);
                 Assert.Equal(3, result.Dependencies.Count);
 
-                Assert.True(result.Dependencies.Any(d =>
+                Assert.Contains(result.Dependencies, d =>
                     d.Id == "WebActivator"
                     && d.VersionSpec == "[1.1.0, )"
-                    && d.TargetFramework == "net40"));
+                    && d.TargetFramework == "net40");
 
-                Assert.True(result.Dependencies.Any(d =>
+                Assert.Contains(result.Dependencies, d =>
                     d.Id == "PackageC"
                     && d.VersionSpec == "[1.1.0, 2.0.1)"
-                    && d.TargetFramework == "net40"));
+                    && d.TargetFramework == "net40");
 
-                Assert.True(result.Dependencies.Any(d =>
+                Assert.Contains(result.Dependencies, d =>
                     d.Id == "jQuery"
                     && d.VersionSpec == "[1.0.0, )"
-                    && d.TargetFramework == "net451"));
+                    && d.TargetFramework == "net451");
 
                 Assert.Equal(0, result.SupportedFrameworks.Count);
             }
@@ -316,20 +317,20 @@ namespace NuGetGallery
                 Assert.Equal("test", result.PackageRegistration.Id);
                 Assert.Equal("1.0.0", result.NormalizedVersion);
 
-                Assert.True(result.Dependencies.Any(d =>
+                Assert.Contains(result.Dependencies, d =>
                     d.Id == "WebActivator"
                     && d.VersionSpec == "(, )"
-                    && d.TargetFramework == "net40"));
+                    && d.TargetFramework == "net40");
 
-                Assert.True(result.Dependencies.Any(d =>
+                Assert.Contains(result.Dependencies, d =>
                     d.Id == "PackageC"
                     && d.VersionSpec == "[1.1.0, 2.0.1)"
-                    && d.TargetFramework == "net40"));
+                    && d.TargetFramework == "net40");
 
-                Assert.True(result.Dependencies.Any(d =>
+                Assert.Contains(result.Dependencies, d =>
                     d.Id == "jQuery"
                     && d.VersionSpec == "(, )"
-                    && d.TargetFramework == "net451"));
+                    && d.TargetFramework == "net451");
             }
         }
 
@@ -337,18 +338,18 @@ namespace NuGetGallery
         {
             var packageRegistrationRepository = new Mock<IEntityRepository<PackageRegistration>>();
             var packageRepository = new Mock<IEntityRepository<Package>>();
-            var packageNamingConflictValidator = new PackageNamingConflictValidator(
-                    packageRegistrationRepository.Object,
-                    packageRepository.Object);
+            var certificateRepository = new Mock<IEntityRepository<Certificate>>();
             var auditingService = new TestAuditingService();
             var telemetryService = new Mock<ITelemetryService>();
+            var securityPolicyService = new Mock<ISecurityPolicyService>();
 
             var packageService = new Mock<PackageService>(
                 packageRegistrationRepository.Object,
                 packageRepository.Object,
-                packageNamingConflictValidator,
+                certificateRepository.Object,
                 auditingService,
-                telemetryService.Object);
+                telemetryService.Object,
+                securityPolicyService.Object);
 
             packageService.CallBase = true;
 

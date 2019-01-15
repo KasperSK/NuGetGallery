@@ -7,6 +7,7 @@ using System.Data;
 using System.Data.Entity;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using NuGetGallery.Auditing;
 using NuGetGallery.Configuration;
@@ -36,6 +37,8 @@ namespace NuGetGallery
 
         public IDateTimeProvider DateTimeProvider { get; protected set; }
 
+        public ITelemetryService TelemetryService { get; protected set; }
+
         protected UserService() { }
 
         public UserService(
@@ -48,7 +51,8 @@ namespace NuGetGallery
             IContentObjectService contentObjectService,
             ISecurityPolicyService securityPolicyService,
             IDateTimeProvider dateTimeProvider,
-            ICredentialBuilder credentialBuilder)
+            ICredentialBuilder credentialBuilder,
+            ITelemetryService telemetryService)
             : this()
         {
             Config = config;
@@ -60,6 +64,7 @@ namespace NuGetGallery
             ContentObjectService = contentObjectService;
             SecurityPolicyService = securityPolicyService;
             DateTimeProvider = dateTimeProvider;
+            TelemetryService = telemetryService;
         }
 
         public async Task<MembershipRequest> AddMembershipRequestAsync(Organization organization, string memberName, bool isAdmin)
@@ -81,6 +86,11 @@ namespace NuGetGallery
                 request.IsAdmin = isAdmin || request.IsAdmin;
                 await EntitiesContext.SaveChangesAsync();
                 return request;
+            }
+
+            if (Regex.IsMatch(memberName, Constants.EmailValidationRegex, RegexOptions.None, Constants.EmailValidationRegexTimeout))
+            {
+                throw new EntityException(Strings.AddMember_NameIsEmail);
             }
 
             var member = FindByUsername(memberName);
@@ -214,12 +224,16 @@ namespace NuGetGallery
                     IsAdmin = request.IsAdmin
                 };
                 organization.Members.Add(membership);
+
+                await Auditing.SaveAuditRecordAsync(new UserAuditRecord(organization, AuditedUserAction.AddOrganizationMember, membership));
             }
             else
             {
                 // If the user is already a member, update the existing membership.
                 // If the request grants admin but this member is not an admin, grant admin to the member.
                 membership.IsAdmin = membership.IsAdmin || request.IsAdmin;
+
+                await Auditing.SaveAuditRecordAsync(new UserAuditRecord(organization, AuditedUserAction.UpdateOrganizationMember, membership));
             }
 
             await EntitiesContext.SaveChangesAsync();
@@ -247,6 +261,9 @@ namespace NuGetGallery
                 }
 
                 membership.IsAdmin = isAdmin;
+
+                await Auditing.SaveAuditRecordAsync(new UserAuditRecord(organization, AuditedUserAction.UpdateOrganizationMember, membership));
+
                 await EntitiesContext.SaveChangesAsync();
             }
 
@@ -273,6 +290,9 @@ namespace NuGetGallery
             }
 
             organization.Members.Remove(membership);
+
+            await Auditing.SaveAuditRecordAsync(new UserAuditRecord(organization, AuditedUserAction.RemoveOrganizationMember, membership));
+
             await EntitiesContext.SaveChangesAsync();
 
             return memberToRemove;
@@ -338,18 +358,26 @@ namespace NuGetGallery
             }
         }
 
-        public virtual User FindByUsername(string username)
+        public virtual User FindByUsername(string username, bool includeDeleted = false)
         {
-            return UserRepository.GetAll()
-                .Include(u => u.Roles)
+            var users = UserRepository.GetAll();
+            if (!includeDeleted)
+            {
+                users = users.Where(u => !u.IsDeleted);
+            }
+            return users.Include(u => u.Roles)
                 .Include(u => u.Credentials)
                 .SingleOrDefault(u => u.Username == username);
         }
 
-        public virtual User FindByKey(int key)
+        public virtual User FindByKey(int key, bool includeDeleted = false)
         {
-            return UserRepository.GetAll()
-                .Include(u => u.Roles)
+            var users = UserRepository.GetAll();
+            if (!includeDeleted)
+            {
+                users = users.Where(u => !u.IsDeleted);
+            }
+            return users.Include(u => u.Roles)
                 .Include(u => u.Credentials)
                 .SingleOrDefault(u => u.Key == key);
         }
@@ -364,7 +392,13 @@ namespace NuGetGallery
 
             await Auditing.SaveAuditRecordAsync(new UserAuditRecord(user, AuditedUserAction.ChangeEmail, newEmailAddress));
 
-            user.UpdateEmailAddress(newEmailAddress, Crypto.GenerateToken);
+            user.UpdateUnconfirmedEmailAddress(newEmailAddress, Crypto.GenerateToken);
+
+            if (!Config.ConfirmEmailAddresses)
+            {
+                user.ConfirmEmailAddress();
+            }
+
             await UserRepository.CommitChangesAsync();
         }
 
@@ -374,6 +408,16 @@ namespace NuGetGallery
 
             user.CancelChangeEmailAddress();
             await UserRepository.CommitChangesAsync();
+        }
+
+        public virtual async Task ChangeMultiFactorAuthentication(User user, bool enableMultiFactor)
+        {
+            await Auditing.SaveAuditRecordAsync(new UserAuditRecord(user, enableMultiFactor ? AuditedUserAction.EnabledMultiFactorAuthentication : AuditedUserAction.DisabledMultiFactorAuthentication));
+
+            user.EnableMultiFactorAuthentication = enableMultiFactor;
+            await UserRepository.CommitChangesAsync();
+
+            TelemetryService.TrackUserChangedMultiFactorAuthentication(user, enableMultiFactor);
         }
 
         public async Task<IDictionary<int, string>> GetEmailAddressesForUserKeysAsync(IReadOnlyCollection<int> distinctUserKeys)
@@ -454,11 +498,6 @@ namespace NuGetGallery
             {
                 errorReason = Strings.TransformAccount_AccountHasMemberships;
             }
-            else if (!ContentObjectService.LoginDiscontinuationConfiguration.AreOrganizationsSupportedForUser(accountToTransform))
-            {
-                errorReason = String.Format(CultureInfo.CurrentCulture,
-                    Strings.Organizations_NotSupportedForAccount, accountToTransform.Username);
-            }
 
             return errorReason == null;
         }
@@ -492,18 +531,17 @@ namespace NuGetGallery
         public async Task<bool> TransformUserToOrganization(User accountToTransform, User adminUser, string token)
         {
             await SubscribeOrganizationToTenantPolicyIfTenantIdIsSupported(accountToTransform, adminUser);
-            
-            return await EntitiesContext.TransformUserToOrganization(accountToTransform, adminUser, token);
+            var result = await EntitiesContext.TransformUserToOrganization(accountToTransform, adminUser, token);
+            if (result)
+            {
+                await Auditing.SaveAuditRecordAsync(new UserAuditRecord(accountToTransform, AuditedUserAction.TransformOrganization, adminUser, affectedMemberIsAdmin: true));
+            }
+
+            return result;
         }
 
         public async Task<Organization> AddOrganizationAsync(string username, string emailAddress, User adminUser)
         {
-            if (!ContentObjectService.LoginDiscontinuationConfiguration.AreOrganizationsSupportedForUser(adminUser))
-            {
-                throw new EntityException(String.Format(CultureInfo.CurrentCulture,
-                    Strings.Organizations_NotSupportedForAccount, adminUser.Username));
-            }
-
             var existingUserWithIdentity = EntitiesContext.Users
                 .FirstOrDefault(u => u.Username == username || u.EmailAddress == emailAddress);
             if (existingUserWithIdentity != null)
@@ -529,6 +567,11 @@ namespace NuGetGallery
                 Members = new List<Membership>()
             };
 
+            if (!Config.ConfirmEmailAddresses)
+            {
+                organization.ConfirmEmailAddress();
+            }
+
             var membership = new Membership { Organization = organization, Member = adminUser, IsAdmin = true };
 
             organization.Members.Add(membership);
@@ -537,6 +580,8 @@ namespace NuGetGallery
             OrganizationRepository.InsertOnCommit(organization);
 
             await SubscribeOrganizationToTenantPolicyIfTenantIdIsSupported(organization, adminUser, commitChanges: false);
+
+            await Auditing.SaveAuditRecordAsync(new UserAuditRecord(organization, AuditedUserAction.AddOrganization, membership));
 
             await EntitiesContext.SaveChangesAsync();
 

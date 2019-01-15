@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Microsoft.WindowsAzure.Storage.Blob;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -43,12 +42,12 @@ namespace NuGetGallery.Auditing
             var record = entry["Record"];
             var actor = entry["Actor"];
 
-            Assert.Equal<string>("-1", record["PackageRecord"]["UserKey"].ToString());
-            Assert.Equal<string>(string.Empty, record["PackageRecord"]["FlattenedAuthors"].ToString());
-            Assert.Equal<string>("ObfuscatedUserName", actor["UserName"].ToString());
-            Assert.Equal<string>("2.2.2.0", actor["MachineIP"].ToString());
-            Assert.Equal<string>("ObfuscatedUserName", actor["OnBehalfOf"]["UserName"].ToString());
-            Assert.Equal<string>("3.3.3.0", actor["OnBehalfOf"]["MachineIP"].ToString());
+            Assert.Equal("-1", record["PackageRecord"]["UserKey"].ToString());
+            Assert.Equal(string.Empty, record["PackageRecord"]["FlattenedAuthors"].ToString());
+            Assert.Equal("ObfuscatedUserName", actor["UserName"].ToString());
+            Assert.Equal("2.2.2.0", actor["MachineIP"].ToString());
+            Assert.Equal("ObfuscatedUserName", actor["OnBehalfOf"]["UserName"].ToString());
+            Assert.Equal("3.3.3.0", actor["OnBehalfOf"]["MachineIP"].ToString());
         }
 
         [Theory]
@@ -67,13 +66,24 @@ namespace NuGetGallery.Auditing
         {
             get
             {
-                List<object[]> data = new List<object[]>();
+                var data = new List<object[]>();
+
                 data.Add(new object[] { CreateUserAuditRecord(), false });
                 data.Add(new object[] { CreateFailedAuthenticatedOperationAuditRecord(), false });
                 data.Add(new object[] { CreateReservedNamespaceAuditRecord(), false });
                 data.Add(new object[] { CreateUserSecurityPolicyAuditRecord(), false });
                 data.Add(new object[] { CreatePackageRegistrationAuditRecord(), false });
-                data.Add(new object[] { CreatePackageAuditRecord(), true });
+                data.Add(new object[] { CreatePackageAuditRecord(AuditedPackageAction.Create), false });
+                data.Add(new object[] { CreatePackageAuditRecord(AuditedPackageAction.Delete), true });
+                data.Add(new object[] { CreatePackageAuditRecord(AuditedPackageAction.Edit), false });
+                data.Add(new object[] { CreatePackageAuditRecord(AuditedPackageAction.List), false });
+                data.Add(new object[] { CreatePackageAuditRecord(AuditedPackageAction.SoftDelete), true });
+#pragma warning disable CS0618
+                data.Add(new object[] { CreatePackageAuditRecord(AuditedPackageAction.UndoEdit), false });
+#pragma warning restore
+                data.Add(new object[] { CreatePackageAuditRecord(AuditedPackageAction.Unlist), false });
+                data.Add(new object[] { CreatePackageAuditRecord(AuditedPackageAction.Verify), false });
+
                 return data;
             }
         }
@@ -104,9 +114,9 @@ namespace NuGetGallery.Auditing
             return new PackageRegistrationAuditRecord(new PackageRegistration(), AuditedPackageRegistrationAction.AddOwner, "");
         }
 
-        static PackageAuditRecord CreatePackageAuditRecord()
+        static PackageAuditRecord CreatePackageAuditRecord(AuditedPackageAction packageAction)
         {
-            return new PackageAuditRecord(new Package() { PackageRegistration = new PackageRegistration() { Id = "id" } }, AuditedPackageAction.Create);
+            return new PackageAuditRecord(new Package() { PackageRegistration = new PackageRegistration() { Id = "id" } }, packageAction);
         }
     }
 }

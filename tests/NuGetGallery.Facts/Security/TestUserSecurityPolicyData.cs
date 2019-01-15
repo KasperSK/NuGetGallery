@@ -11,40 +11,52 @@ namespace NuGetGallery.Security
 {
     public class TestUserSecurityPolicyData
     {
-        private const string MockSubscriptionName = "MockSubscription";
+        private const string UserPoliciesSubscriptionName = "MockSubscription";
+        private const string OrganizationPoliciesSubscriptionName = "MockSubscription2";
         private const string MockDefaultSubscriptionName = "Default";
 
         public TestUserSecurityPolicyData(bool policy1Result = true, bool policy2Result = true, bool defaultPolicy1Result = true, bool defaultPolicy2Result = true)
         {
             var resultPerSubscription1 = new Dictionary<string, bool>()
             {
-                { MockSubscriptionName, policy1Result },
+                { UserPoliciesSubscriptionName, policy1Result },
                 { MockDefaultSubscriptionName, defaultPolicy1Result }
             };
 
             var resultPerSubscription2 = new Dictionary<string, bool>()
             {
-                { MockSubscriptionName, policy2Result },
+                { UserPoliciesSubscriptionName, policy2Result },
                 { MockDefaultSubscriptionName, defaultPolicy2Result }
             };
 
             MockPolicyHandler1 = MockHandler(nameof(MockPolicyHandler1), resultPerSubscription1);
             MockPolicyHandler2 = MockHandler(nameof(MockPolicyHandler2), resultPerSubscription2);
 
-            Subscription = new Mock<IUserSecurityPolicySubscription>();
-            Subscription.Setup(s => s.SubscriptionName).Returns(MockSubscriptionName);
-            Subscription.Setup(s => s.OnSubscribeAsync(It.IsAny<UserSecurityPolicySubscriptionContext>()))
-                .Returns(Task.CompletedTask).Verifiable();
-            Subscription.Setup(s => s.OnUnsubscribeAsync(It.IsAny<UserSecurityPolicySubscriptionContext>()))
-                .Returns(Task.CompletedTask).Verifiable();
-            Subscription.Setup(s => s.Policies).Returns(GetMockPolicies(MockSubscriptionName));
-            
+            UserPoliciesSubscription = CreateSubscriptionMock(UserPoliciesSubscriptionName);
+            OrganizationPoliciesSubscription = CreateSubscriptionMock(OrganizationPoliciesSubscriptionName);
+
             DefaultSubscription = new Mock<IUserSecurityPolicySubscription>();
             DefaultSubscription.Setup(s => s.SubscriptionName).Returns(MockDefaultSubscriptionName);
             DefaultSubscription.Setup(s => s.Policies).Returns(GetMockPolicies(MockDefaultSubscriptionName));
         }
 
-        public Mock<IUserSecurityPolicySubscription> Subscription { get; }
+        private Mock<IUserSecurityPolicySubscription> CreateSubscriptionMock(string name)
+        {
+            var subscription = new Mock<IUserSecurityPolicySubscription>();
+
+            subscription.Setup(s => s.SubscriptionName).Returns(name);
+            subscription.Setup(s => s.OnSubscribeAsync(It.IsAny<UserSecurityPolicySubscriptionContext>()))
+                .Returns(Task.CompletedTask).Verifiable();
+            subscription.Setup(s => s.OnUnsubscribeAsync(It.IsAny<UserSecurityPolicySubscriptionContext>()))
+                .Returns(Task.CompletedTask).Verifiable();
+            subscription.Setup(s => s.Policies).Returns(GetMockPolicies(name));
+
+            return subscription;
+        }
+
+        public Mock<IUserSecurityPolicySubscription> UserPoliciesSubscription { get; }
+
+        public Mock<IUserSecurityPolicySubscription> OrganizationPoliciesSubscription { get; }
 
         public Mock<IUserSecurityPolicySubscription> DefaultSubscription { get; }
 
@@ -64,7 +76,7 @@ namespace NuGetGallery.Security
         public void VerifySubscriptionPolicies(IEnumerable<UserSecurityPolicy> actualPolicies)
         {
             var actual = actualPolicies.ToList();
-            var expected = Subscription.Object.Policies.ToList();
+            var expected = UserPoliciesSubscription.Object.Policies.ToList();
 
             Assert.Equal(expected.Count, actual.Count);
             
@@ -86,8 +98,8 @@ namespace NuGetGallery.Security
             }
             Assert.Contains(failedPolicy, actual.ErrorMessage);
             
-            MockPolicyHandler1.Verify(p => p.Evaluate(It.IsAny<UserSecurityPolicyEvaluationContext>()), Times.Once);
-            MockPolicyHandler2.Verify(p => p.Evaluate(It.IsAny<UserSecurityPolicyEvaluationContext>()),
+            MockPolicyHandler1.Verify(p => p.EvaluateAsync(It.IsAny<UserSecurityPolicyEvaluationContext>()), Times.Once);
+            MockPolicyHandler2.Verify(p => p.EvaluateAsync(It.IsAny<UserSecurityPolicyEvaluationContext>()),
                 expectedPolicy2.HasValue ? Times.Once() : Times.Never());
         }
 
@@ -100,13 +112,13 @@ namespace NuGetGallery.Security
         private static Mock<UserSecurityPolicyHandler> MockHandler(string name, Dictionary<string, bool> resultPerSubscription)
         {
             var mock = new Mock<UserSecurityPolicyHandler>(name, SecurityPolicyAction.PackagePush);
-            mock.Setup(m => m.Evaluate(It.IsAny<UserSecurityPolicyEvaluationContext>()))
+            mock.Setup(m => m.EvaluateAsync(It.IsAny<UserSecurityPolicyEvaluationContext>()))
                 .Returns<UserSecurityPolicyEvaluationContext>(x =>
                 {
                     var subscription = x.Policies.First().Subscription;
                     return resultPerSubscription[subscription] == true ? 
-                        SecurityPolicyResult.SuccessResult :
-                        SecurityPolicyResult.CreateErrorResult($"{subscription}-{name}");
+                        Task.FromResult(SecurityPolicyResult.SuccessResult) :
+                        Task.FromResult(SecurityPolicyResult.CreateErrorResult($"{subscription}-{name}"));
                 }).Verifiable();
             return mock;
         }

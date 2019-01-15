@@ -10,10 +10,14 @@ namespace NuGetGallery
     {
         private const PermissionsRequirement RequireOwnerOrSiteAdmin = 
             PermissionsRequirement.Owner | PermissionsRequirement.SiteAdmin;
+        private const PermissionsRequirement RequireOwnerOrSiteAdminOrOrganizationAdmin =
+            PermissionsRequirement.Owner | PermissionsRequirement.SiteAdmin | PermissionsRequirement.OrganizationAdmin;
         private const PermissionsRequirement RequireOwnerOrOrganizationAdmin = 
             PermissionsRequirement.Owner | PermissionsRequirement.OrganizationAdmin;
-        private const PermissionsRequirement RequireOwnerOrOrganizationMember = 
+        private const PermissionsRequirement RequireOwnerOrOrganizationMember =
             PermissionsRequirement.Owner | PermissionsRequirement.OrganizationAdmin | PermissionsRequirement.OrganizationCollaborator;
+        private const PermissionsRequirement RequireOwnerOrSiteAdminOrOrganizationMember =
+            PermissionsRequirement.Owner | PermissionsRequirement.SiteAdmin | PermissionsRequirement.OrganizationAdmin | PermissionsRequirement.OrganizationCollaborator;
 
         /// <summary>
         /// The action of seeing private metadata about a package.
@@ -36,6 +40,14 @@ namespace NuGetGallery
         /// The action of uploading a new version of an existing package ID.
         /// </summary>
         public static ActionRequiringPackagePermissions UploadNewPackageVersion =
+            new ActionRequiringPackagePermissions(
+                accountOnBehalfOfPermissionsRequirement: RequireOwnerOrOrganizationMember,
+                packageRegistrationPermissionsRequirement: PermissionsRequirement.Owner);
+
+        /// <summary>
+        /// The action of uploading a symbol package for an existing package.
+        /// </summary>
+        public static ActionRequiringPackagePermissions UploadSymbolPackage =
             new ActionRequiringPackagePermissions(
                 accountOnBehalfOfPermissionsRequirement: RequireOwnerOrOrganizationMember,
                 packageRegistrationPermissionsRequirement: PermissionsRequirement.Owner);
@@ -96,6 +108,13 @@ namespace NuGetGallery
                 accountPermissionsRequirement: RequireOwnerOrOrganizationAdmin);
 
         /// <summary>
+        /// The action of viewing (read-only) a user or organization account.
+        /// </summary>
+        public static ActionRequiringAccountPermissions ViewAccount =
+            new ActionRequiringAccountPermissions(
+                accountPermissionsRequirement: RequireOwnerOrSiteAdminOrOrganizationMember);
+
+        /// <summary>
         /// The action of managing a user or organization account. This includes confirming an account,
         /// changing the email address, changing email subscriptions, modifying sign-in credentials, etc.
         /// </summary>
@@ -104,10 +123,34 @@ namespace NuGetGallery
                 accountPermissionsRequirement: RequireOwnerOrOrganizationAdmin);
 
         /// <summary>
-        /// The action of viewing (read-only) a user or organization account.
+        /// The action of managing an organization's memberships.
         /// </summary>
-        public static ActionRequiringAccountPermissions ViewAccount =
+        public static ActionRequiringAccountPermissions ManageMembership =
             new ActionRequiringAccountPermissions(
-                accountPermissionsRequirement: RequireOwnerOrOrganizationMember);
+                accountPermissionsRequirement: RequireOwnerOrSiteAdminOrOrganizationAdmin);
+
+        /// <summary>
+        /// The action of changing a package's required signer.
+        /// </summary>
+        public static ActionRequiringPackagePermissions ManagePackageRequiredSigner =
+             new ActionRequiringPackagePermissions(
+                accountOnBehalfOfPermissionsRequirement: RequireOwnerOrOrganizationAdmin,
+                packageRegistrationPermissionsRequirement: RequireOwnerOrOrganizationAdmin);
+
+        /// <summary>
+        /// The action of adding a package to a reserved namespace that the package is in.
+        /// </summary>
+        public static ActionRequiringReservedNamespacePermissions AddPackageToReservedNamespace =
+            new ActionRequiringReservedNamespacePermissions(
+                accountOnBehalfOfPermissionsRequirement: PermissionsRequirement.Owner,
+                reservedNamespacePermissionsRequirement: PermissionsRequirement.Owner);
+
+        /// <summary>
+        /// The action of removing a package from a reserved namespace that the package is in.
+        /// </summary>
+        public static ActionRequiringReservedNamespacePermissions RemovePackageFromReservedNamespace =
+            new ActionRequiringReservedNamespacePermissions(
+                accountOnBehalfOfPermissionsRequirement: RequireOwnerOrSiteAdminOrOrganizationAdmin,
+                reservedNamespacePermissionsRequirement: RequireOwnerOrOrganizationAdmin);
     }
 }

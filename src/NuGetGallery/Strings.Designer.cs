@@ -97,15 +97,6 @@ namespace NuGetGallery {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Account &apos;{0}&apos; cannot be deleted because it is a member of an organization. The user needs to be manually removed from any organizations before the account can be deleted..
-        /// </summary>
-        public static string AccountDelete_OrganizationMemberDeleteNotImplemented {
-            get {
-                return ResourceManager.GetString("AccountDelete_OrganizationMemberDeleteNotImplemented", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to The account:{0} was deleted succesfully..
         /// </summary>
         public static string AccountDelete_Success {
@@ -115,7 +106,7 @@ namespace NuGetGallery {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to DeleteAccountRequest.
+        ///   Looks up a localized string similar to Account Deletion Request.
         /// </summary>
         public static string AccountDelete_SupportRequestTitle {
             get {
@@ -125,11 +116,20 @@ namespace NuGetGallery {
         
         /// <summary>
         ///   Looks up a localized string similar to The account with the email {0} is linked to another Microsoft account.
-        ///If you wish to update the linked Microsoft account you can do so from the account settings page..
+        ///If you would like to update the linked Microsoft account you can do so from the account settings page..
         /// </summary>
         public static string AccountIsLinkedToAnotherExternalAccount {
             get {
                 return ResourceManager.GetString("AccountIsLinkedToAnotherExternalAccount", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to An exception was encoutered while trying to delete the account. Please contact support for assistance..
+        /// </summary>
+        public static string AccountSelfDelete_Fail {
+            get {
+                return ResourceManager.GetString("AccountSelfDelete_Fail", resourceCulture);
             }
         }
         
@@ -148,6 +148,15 @@ namespace NuGetGallery {
         public static string AddMember_MissingRequest {
             get {
                 return ResourceManager.GetString("AddMember_MissingRequest", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to You must add a member by username, not an email address..
+        /// </summary>
+        public static string AddMember_NameIsEmail {
+            get {
+                return ResourceManager.GetString("AddMember_NameIsEmail", resourceCulture);
             }
         }
         
@@ -220,6 +229,15 @@ namespace NuGetGallery {
         public static string AddOwner_CurrentUserNotFound {
             get {
                 return ResourceManager.GetString("AddOwner_CurrentUserNotFound", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to You must add an owner by username, not an email address..
+        /// </summary>
+        public static string AddOwner_NameIsEmail {
+            get {
+                return ResourceManager.GetString("AddOwner_NameIsEmail", resourceCulture);
             }
         }
         
@@ -460,12 +478,30 @@ namespace NuGetGallery {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The argument cannot be null or empty..
+        /// </summary>
+        public static string ArgumentCannotBeNullOrEmpty {
+            get {
+                return ResourceManager.GetString("ArgumentCannotBeNullOrEmpty", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The &apos;{0}&apos; authentication provider is disabled and cannot be used to authenticate
         ///.
         /// </summary>
         public static string AuthenticationProviderDisabled {
             get {
                 return ResourceManager.GetString("AuthenticationProviderDisabled", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to (automated).
+        /// </summary>
+        public static string AutomatedPackageDeleteSignature {
+            get {
+                return ResourceManager.GetString("AutomatedPackageDeleteSignature", resourceCulture);
             }
         }
         
@@ -529,6 +565,24 @@ namespace NuGetGallery {
         public static string CannotRemoveOnlyLoginCredential {
             get {
                 return ResourceManager.GetString("CannotRemoveOnlyLoginCredential", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The certificate does not exist..
+        /// </summary>
+        public static string CertificateDoesNotExist {
+            get {
+                return ResourceManager.GetString("CertificateDoesNotExist", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to A certificate file is required..
+        /// </summary>
+        public static string CertificateFileIsRequired {
+            get {
+                return ResourceManager.GetString("CertificateFileIsRequired", resourceCulture);
             }
         }
         
@@ -704,6 +758,15 @@ namespace NuGetGallery {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The password login is discontinued and has been removed for your account. Please use your Microsoft account to log into {0} going forward..
+        /// </summary>
+        public static string DiscontinuedLogin_PasswordRemoved {
+            get {
+                return ResourceManager.GetString("DiscontinuedLogin_PasswordRemoved", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Owner(s) &apos;{0}&apos; require(s) that all co-owners use client version {1} or higher to push all of their packages. For more information, contact {2}.
         ///.
         /// </summary>
@@ -714,7 +777,7 @@ namespace NuGetGallery {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to The email address &apos;{0}&apos; is being used..
+        ///   Looks up a localized string similar to The email address &apos;{0}&apos; is already in use by a different account..
         /// </summary>
         public static string EmailAddressBeingUsed {
             get {
@@ -860,6 +923,15 @@ namespace NuGetGallery {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Automatic hard-delete for reupload of package that failed validation.
+        /// </summary>
+        public static string FailedValidationHardDeleteReason {
+            get {
+                return ResourceManager.GetString("FailedValidationHardDeleteReason", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The API key &apos;{0}&apos; is invalid..
         /// </summary>
         public static string InvalidApiKey {
@@ -883,6 +955,15 @@ namespace NuGetGallery {
         public static string InvalidPortableFramework {
             get {
                 return ResourceManager.GetString("InvalidPortableFramework", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Recaptcha response was not valid. Try again or email support if you need assistance..
+        /// </summary>
+        public static string InvalidRecaptchaResponse {
+            get {
+                return ResourceManager.GetString("InvalidRecaptchaResponse", resourceCulture);
             }
         }
         
@@ -1013,20 +1094,38 @@ namespace NuGetGallery {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Two-factor authentication has been disabled for your account. Please close all sessions for Microsoft accounts before you log into {0} to prevent automatic enabling of this setting..
+        /// </summary>
+        public static string MultiFactorAuth_Disabled {
+            get {
+                return ResourceManager.GetString("MultiFactorAuth_Disabled", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Two-factor authentication is enabled for your account. It will be enforced the next time you log into {0}..
+        /// </summary>
+        public static string MultiFactorAuth_Enabled {
+            get {
+                return ResourceManager.GetString("MultiFactorAuth_Enabled", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to We noticed you used two-factor authentication for login. We have enabled your account to use two-factor authentication going forward..
+        /// </summary>
+        public static string MultiFactorAuth_LoginUpdate {
+            get {
+                return ResourceManager.GetString("MultiFactorAuth_LoginUpdate", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Multiple Credentials match &apos;{0}&apos; credential with Key {1}.
         /// </summary>
         public static string MultipleMatchingCredentials {
             get {
                 return ResourceManager.GetString("MultipleMatchingCredentials", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to The ID of your package, &apos;{0}&apos;, is similar to the title of an existing package, which can cause confusion with our users. Please modify the ID of your package and try uploading again..
-        /// </summary>
-        public static string NewRegistrationIdMatchesExistingPackageTitle {
-            get {
-                return ResourceManager.GetString("NewRegistrationIdMatchesExistingPackageTitle", resourceCulture);
             }
         }
         
@@ -1162,6 +1261,15 @@ namespace NuGetGallery {
         public static string PackageExistsAndCannotBeModified {
             get {
                 return ResourceManager.GetString("PackageExistsAndCannotBeModified", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The package file exceeds the size limit. Please try again..
+        /// </summary>
+        public static string PackageFileTooLarge {
+            get {
+                return ResourceManager.GetString("PackageFileTooLarge", resourceCulture);
             }
         }
         
@@ -1364,6 +1472,69 @@ namespace NuGetGallery {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to At least one package owner has no certificate while at least one other package owner has at least one certificate, which means future package submissions may be unsigned or signed with any certificate registered to any owner..
+        /// </summary>
+        public static string RequiredSigner_AnyWithMixedResult {
+            get {
+                return ResourceManager.GetString("RequiredSigner_AnyWithMixedResult", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to All package owners have at least one certificate, which means future package submissions must be signed..
+        /// </summary>
+        public static string RequiredSigner_AnyWithSignedResult {
+            get {
+                return ResourceManager.GetString("RequiredSigner_AnyWithSignedResult", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to All package owners have at least one certificate, which means future package submissions must be signed..
+        /// </summary>
+        public static string RequiredSigner_AnyWithUnsignedResult {
+            get {
+                return ResourceManager.GetString("RequiredSigner_AnyWithUnsignedResult", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Are you sure you want to change the required signer for this package?.
+        /// </summary>
+        public static string RequiredSigner_Confirm {
+            get {
+                return ResourceManager.GetString("RequiredSigner_Confirm", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; currently has at least one certificate, which means future package submissions must be signed..
+        /// </summary>
+        public static string RequiredSigner_OwnerHasAtLeastOneCertificate {
+            get {
+                return ResourceManager.GetString("RequiredSigner_OwnerHasAtLeastOneCertificate", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to &apos;{0}&apos; currently has no certificate, which means future package submissions must be unsigned..
+        /// </summary>
+        public static string RequiredSigner_OwnerHasNoCertificate {
+            get {
+                return ResourceManager.GetString("RequiredSigner_OwnerHasNoCertificate", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to This action will change the required signer to &apos;{0}&apos; for all future submissions for this package..
+        /// </summary>
+        public static string RequiredSigner_ThisAction {
+            get {
+                return ResourceManager.GetString("RequiredSigner_ThisAction", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The namespace &apos;{0}&apos; contains invalid characters. Examples of valid namespaces include &apos;MyNamespace&apos; and &apos;MyNamespace.&apos;..
         /// </summary>
         public static string ReservedNamespace_InvalidCharactersInNamespace {
@@ -1553,6 +1724,15 @@ namespace NuGetGallery {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The package metadata contains a non-compliant copyright element..
+        /// </summary>
+        public static string SecurityPolicy_CopyrightNotCompliant {
+            get {
+                return ResourceManager.GetString("SecurityPolicy_CopyrightNotCompliant", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to A package verification key is required to push symbols. Please contact support@nuget.org to get more details..
         /// </summary>
         public static string SecurityPolicy_RequireApiKeyWithPackageVerifyScope {
@@ -1562,11 +1742,57 @@ namespace NuGetGallery {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The package metadata is missing required author &apos;{0}&apos;..
+        /// </summary>
+        public static string SecurityPolicy_RequiredAuthorMissing {
+            get {
+                return ResourceManager.GetString("SecurityPolicy_RequiredAuthorMissing", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The package metadata is missing required LicenseUrl..
+        /// </summary>
+        public static string SecurityPolicy_RequiredLicenseUrlMissing {
+            get {
+                return ResourceManager.GetString("SecurityPolicy_RequiredLicenseUrlMissing", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The package metadata is missing required ProjectUrl..
+        /// </summary>
+        public static string SecurityPolicy_RequiredProjectUrlMissing {
+            get {
+                return ResourceManager.GetString("SecurityPolicy_RequiredProjectUrlMissing", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The package is not compliant with metadata requirements for Microsoft packages on NuGet.org. Go to https://aka.ms/Microsoft-NuGet-Compliance for more information.
+        ///Policy violations: {0}.
+        /// </summary>
+        public static string SecurityPolicy_RequireMicrosoftPackageMetadataComplianceForPush {
+            get {
+                return ResourceManager.GetString("SecurityPolicy_RequireMicrosoftPackageMetadataComplianceForPush", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to A client version &apos;{0}&apos; or higher is required to be able to push packages. Please contact support@nuget.org to get more details..
         /// </summary>
         public static string SecurityPolicy_RequireMinProtocolVersionForPush {
             get {
                 return ResourceManager.GetString("SecurityPolicy_RequireMinProtocolVersionForPush", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to You have not published a package with this prefix in the past. This means other users may be able to push packages starting with the same prefix. Contact account@nuget.org to reserve the prefix. Go to https://docs.microsoft.com/en-us/nuget/reference/id-prefix-reservation to learn more about Package ID prefix reservation..
+        /// </summary>
+        public static string SecurityPolicy_RequirePackagePrefixReserved {
+            get {
+                return ResourceManager.GetString("SecurityPolicy_RequirePackagePrefixReserved", resourceCulture);
             }
         }
         
@@ -1621,6 +1847,78 @@ namespace NuGetGallery {
         public static string SupportRequestSentTransientMessage {
             get {
                 return ResourceManager.GetString("SupportRequestSentTransientMessage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to It looks like there is another copy of this symbols package pending validation(s). Please wait for the validation(s) to finish before trying to replace the symbols package..
+        /// </summary>
+        public static string SymbolsPackage_ConflictValidating {
+            get {
+                return ResourceManager.GetString("SymbolsPackage_ConflictValidating", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to read the symbols package. Ensure it is a valid symbols package (.snupkg)..
+        /// </summary>
+        public static string SymbolsPackage_FailedToReadPackage {
+            get {
+                return ResourceManager.GetString("SymbolsPackage_FailedToReadPackage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid metadata items specified in nuspec. Please remove &apos;{0}&apos; from the nuspec..
+        /// </summary>
+        public static string SymbolsPackage_InvalidDataInNuspec {
+            get {
+                return ResourceManager.GetString("SymbolsPackage_InvalidDataInNuspec", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid file found in the uploaded package. Symbols packages should only contain &apos;{0}&apos; files..
+        /// </summary>
+        public static string SymbolsPackage_InvalidFiles {
+            get {
+                return ResourceManager.GetString("SymbolsPackage_InvalidFiles", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The uploaded package is not a valid symbols package. The required &apos;SymbolsPackage&apos; package type is missing..
+        /// </summary>
+        public static string SymbolsPackage_NotSymbolPackage {
+            get {
+                return ResourceManager.GetString("SymbolsPackage_NotSymbolPackage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to A package with ID &apos;{0}&apos; and version &apos;{1}&apos; does not exist. Please upload the package before uploading its symbols..
+        /// </summary>
+        public static string SymbolsPackage_PackageIdAndVersionNotFound {
+            get {
+                return ResourceManager.GetString("SymbolsPackage_PackageIdAndVersionNotFound", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to No available symbols package found for ID {0} and version {1}..
+        /// </summary>
+        public static string SymbolsPackage_PackageNotAvailable {
+            get {
+                return ResourceManager.GetString("SymbolsPackage_PackageNotAvailable", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to You do not have the permissions to upload symbol packages..
+        /// </summary>
+        public static string SymbolsPackage_UploadNotAllowed {
+            get {
+                return ResourceManager.GetString("SymbolsPackage_UploadNotAllowed", resourceCulture);
             }
         }
         
@@ -1706,6 +2004,15 @@ namespace NuGetGallery {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to You must choose an administrator by username, not an email address..
+        /// </summary>
+        public static string TransformAccount_AdminNameIsEmail {
+            get {
+                return ResourceManager.GetString("TransformAccount_AdminNameIsEmail", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to The transform request for your account has been successfully cancelled..
         /// </summary>
         public static string TransformAccount_Cancelled {
@@ -1778,6 +2085,15 @@ namespace NuGetGallery {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to The uploaded package&apos;s id is too similar to the already existing packages: {0} .
+        /// </summary>
+        public static string TyposquattingCheckFails {
+            get {
+                return ResourceManager.GetString("TyposquattingCheckFails", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to User is not authorized.
         /// </summary>
         public static string Unauthorized {
@@ -1832,7 +2148,7 @@ namespace NuGetGallery {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to The file must be a .nupkg file..
+        ///   Looks up a localized string similar to The file must be a .nupkg or .snupkg file..
         /// </summary>
         public static string UploadFileMustBeNuGetPackage {
             get {
@@ -1909,6 +2225,61 @@ namespace NuGetGallery {
         public static string UploadPackage_NewVersionOnBehalfOfUserNotAllowed {
             get {
                 return ResourceManager.GetString("UploadPackage_NewVersionOnBehalfOfUserNotAllowed", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The package contains too many files and/or folders..
+        /// </summary>
+        public static string UploadPackage_PackageContainsTooManyEntries {
+            get {
+                return ResourceManager.GetString("UploadPackage_PackageContainsTooManyEntries", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to This package must be signed with a registered certificate..
+        /// </summary>
+        public static string UploadPackage_PackageIsNotSigned {
+            get {
+                return ResourceManager.GetString("UploadPackage_PackageIsNotSigned", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The package was signed. You must register the signing certificate to publish signed packages..
+        /// </summary>
+        public static string UploadPackage_PackageIsSignedButMissingCertificate_CurrentUserCanManageCertificates {
+            get {
+                return ResourceManager.GetString("UploadPackage_PackageIsSignedButMissingCertificate_CurrentUserCanManageCertificat" +
+                        "es", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to You can manage your certificates on the Account Settings page..
+        /// </summary>
+        public static string UploadPackage_PackageIsSignedButMissingCertificate_ManageCertificate {
+            get {
+                return ResourceManager.GetString("UploadPackage_PackageIsSignedButMissingCertificate_ManageCertificate", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The package was signed. The owner &apos;{0}&apos; must register the signing certificate to publish signed packages..
+        /// </summary>
+        public static string UploadPackage_PackageIsSignedButMissingCertificate_RequiredSigner {
+            get {
+                return ResourceManager.GetString("UploadPackage_PackageIsSignedButMissingCertificate_RequiredSigner", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The previous package version &apos;{0}&apos; is author signed but the uploaded package is unsigned. To avoid this warning, sign the package before uploading..
+        /// </summary>
+        public static string UploadPackage_SignedToUnsignedTransition {
+            get {
+                return ResourceManager.GetString("UploadPackage_SignedToUnsignedTransition", resourceCulture);
             }
         }
         
@@ -2030,20 +2401,65 @@ namespace NuGetGallery {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to (automated).
-        /// </summary>
-        public static string UserPackageDeleteSignature {
-            get {
-                return ResourceManager.GetString("UserPackageDeleteSignature", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to This support request is intended for automatic package deletion..
         /// </summary>
         public static string UserPackageDeleteSupportRequestMessage {
             get {
                 return ResourceManager.GetString("UserPackageDeleteSupportRequestMessage", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The file exceeds the size limit of {0} bytes..
+        /// </summary>
+        public static string ValidateCertificate_FileTooLarge {
+            get {
+                return ResourceManager.GetString("ValidateCertificate_FileTooLarge", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The file must be a DER encoded binary X.509 certificate..
+        /// </summary>
+        public static string ValidateCertificate_InvalidEncoding {
+            get {
+                return ResourceManager.GetString("ValidateCertificate_InvalidEncoding", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The file length is invalid..
+        /// </summary>
+        public static string ValidateCertificate_InvalidFileLength {
+            get {
+                return ResourceManager.GetString("ValidateCertificate_InvalidFileLength", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The file extension must be {0}..
+        /// </summary>
+        public static string ValidateCertificate_InvalidFileType {
+            get {
+                return ResourceManager.GetString("ValidateCertificate_InvalidFileType", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The file stream is invalid..
+        /// </summary>
+        public static string ValidateCertificate_InvalidStream {
+            get {
+                return ResourceManager.GetString("ValidateCertificate_InvalidStream", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The file stream must be seekable..
+        /// </summary>
+        public static string ValidateCertificate_StreamMustBeSeekable {
+            get {
+                return ResourceManager.GetString("ValidateCertificate_StreamMustBeSeekable", resourceCulture);
             }
         }
         
@@ -2134,6 +2550,24 @@ namespace NuGetGallery {
         public static string WarningApiKeyExpired {
             get {
                 return ResourceManager.GetString("WarningApiKeyExpired", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Repository URL scheme should be &apos;https&apos; or &apos;git&apos;. The provided URL will not be displayed..
+        /// </summary>
+        public static string WarningNotHttpsOrGitRepositoryUrlScheme {
+            get {
+                return ResourceManager.GetString("WarningNotHttpsOrGitRepositoryUrlScheme", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Repository URL scheme should be &apos;https&apos;. The provided URL will not be displayed..
+        /// </summary>
+        public static string WarningNotHttpsRepositoryUrlScheme {
+            get {
+                return ResourceManager.GetString("WarningNotHttpsRepositoryUrlScheme", resourceCulture);
             }
         }
         

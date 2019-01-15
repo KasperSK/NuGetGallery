@@ -3,7 +3,6 @@
     ViewBag.Title = "Contact the Owners of " + Model.PackageId + " " + Model.PackageVersion;
     ViewBag.Tab = "Packages";
     ViewBag.MdPageColumns = Constants.ColumnsFormMd;
-    Layout = "~/Views/Shared/Gallery/Layout.cshtml";
 }
 
 <section role="main" class="container main-container page-contact-owners">
@@ -52,7 +51,7 @@
                         @Html.ShowValidationMessagesFor(m => m.CopySender)
                     </div>
                     <div class="form-group">
-                        <input type="submit" class="btn btn-primary form-control" value="Send" />
+                        <input id="Submit" type="submit" class="btn btn-primary form-control" value="Send" />
                     </div>
                 }
             }
@@ -96,3 +95,7 @@
             </div>
     </div>
 </section>
+
+@section BottomScripts {
+    @ViewHelpers.RecatpchaScripts(Config.Current.ReCaptchaPublicKey, "Submit")
+}

@@ -9,20 +9,39 @@ using System.Threading.Tasks;
 using System.Web.Mvc;
 using NuGetGallery.Authentication;
 using NuGetGallery.Filters;
+using NuGetGallery.Helpers;
+using NuGetGallery.Security;
 
 namespace NuGetGallery
 {
     public class OrganizationsController
         : AccountsController<Organization, OrganizationAccountViewModel>
     {
+        public IDeleteAccountService DeleteAccountService { get; }
+
         public OrganizationsController(
             AuthenticationService authService,
             ICuratedFeedService curatedFeedService,
             IMessageService messageService,
             IUserService userService,
-            ITelemetryService telemetryService)
-            : base(authService, curatedFeedService, messageService, userService, telemetryService)
+            ITelemetryService telemetryService,
+            ISecurityPolicyService securityPolicyService,
+            ICertificateService certificateService,
+            IPackageService packageService,
+            IDeleteAccountService deleteAccountService,
+            IContentObjectService contentObjectService)
+            : base(
+                  authService,
+                  curatedFeedService,
+                  packageService,
+                  messageService,
+                  userService,
+                  telemetryService,
+                  securityPolicyService,
+                  certificateService,
+                  contentObjectService)
         {
+            DeleteAccountService = deleteAccountService;
         }
 
         public override string AccountAction => nameof(ManageOrganization);
@@ -34,17 +53,17 @@ namespace NuGetGallery
             EmailUpdateCancelled = Strings.OrganizationEmailUpdateCancelled
         };
 
-        protected override void SendNewAccountEmail(User account)
+        protected override Task SendNewAccountEmailAsync(User account)
         {
             var confirmationUrl = Url.ConfirmOrganizationEmail(account.Username, account.EmailConfirmationToken, relativeUrl: false);
 
-            MessageService.SendNewAccountEmail(account, confirmationUrl);
+            return MessageService.SendNewAccountEmailAsync(account, confirmationUrl);
         }
 
-        protected override void SendEmailChangedConfirmationNotice(User account)
+        protected override Task SendEmailChangedConfirmationNoticeAsync(User account)
         {
             var confirmationUrl = Url.ConfirmOrganizationEmail(account.Username, account.EmailConfirmationToken, relativeUrl: false);
-            MessageService.SendEmailChangeConfirmationNotice(account, confirmationUrl);
+            return MessageService.SendEmailChangeConfirmationNoticeAsync(account, confirmationUrl);
         }
 
         [HttpGet]
@@ -66,7 +85,7 @@ namespace NuGetGallery
             try
             {
                 var organization = await UserService.AddOrganizationAsync(organizationName, organizationEmailAddress, adminUser);
-                SendNewAccountEmail(organization);
+                await SendNewAccountEmailAsync(organization);
                 TelemetryService.TrackOrganizationAdded(organization);
                 return RedirectToAction(nameof(ManageOrganization), new { accountName = organization.Username });
             }
@@ -94,7 +113,7 @@ namespace NuGetGallery
             var account = GetAccount(accountName);
 
             if (account == null
-                || ActionsRequiringPermissions.ManageAccount.CheckPermissions(GetCurrentUser(), account)
+                || ActionsRequiringPermissions.ManageMembership.CheckPermissions(GetCurrentUser(), account)
                     != PermissionsCheckResult.Allowed)
             {
                 return Json(HttpStatusCode.Forbidden, Strings.Unauthorized);
@@ -115,8 +134,8 @@ namespace NuGetGallery
                 var rejectUrl = Url.RejectOrganizationMembershipRequest(request, relativeUrl: false);
                 var cancelUrl = Url.CancelOrganizationMembershipRequest(memberName, relativeUrl: false);
 
-                MessageService.SendOrganizationMembershipRequest(account, request.NewMember, currentUser, request.IsAdmin, profileUrl, confirmUrl, rejectUrl);
-                MessageService.SendOrganizationMembershipRequestInitiatedNotice(account, currentUser, request.NewMember, request.IsAdmin, cancelUrl);
+                await MessageService.SendOrganizationMembershipRequestAsync(account, request.NewMember, currentUser, request.IsAdmin, profileUrl, confirmUrl, rejectUrl);
+                await MessageService.SendOrganizationMembershipRequestInitiatedNoticeAsync(account, currentUser, request.NewMember, request.IsAdmin, cancelUrl);
 
                 return Json(new OrganizationMemberViewModel(request));
             }
@@ -140,7 +159,7 @@ namespace NuGetGallery
             try
             {
                 var member = await UserService.AddMemberAsync(account, GetCurrentUser().Username, confirmationToken);
-                MessageService.SendOrganizationMemberUpdatedNotice(account, member);
+                await MessageService.SendOrganizationMemberUpdatedNoticeAsync(account, member);
 
                 TempData["Message"] = String.Format(CultureInfo.CurrentCulture,
                     Strings.AddMember_Success, account.Username);
@@ -169,7 +188,7 @@ namespace NuGetGallery
             {
                 var member = GetCurrentUser();
                 await UserService.RejectMembershipRequestAsync(account, member.Username, confirmationToken);
-                MessageService.SendOrganizationMembershipRequestRejectedNotice(account, member);
+                await MessageService.SendOrganizationMembershipRequestRejectedNoticeAsync(account, member);
 
                 return HandleOrganizationMembershipRequestView(new HandleOrganizationMembershipRequestModel(false, account));
             }
@@ -193,7 +212,7 @@ namespace NuGetGallery
             var account = GetAccount(accountName);
 
             if (account == null
-                || ActionsRequiringPermissions.ManageAccount.CheckPermissions(GetCurrentUser(), account)
+                || ActionsRequiringPermissions.ManageMembership.CheckPermissions(GetCurrentUser(), account)
                     != PermissionsCheckResult.Allowed)
             {
                 return Json(HttpStatusCode.Forbidden, Strings.Unauthorized);
@@ -202,7 +221,7 @@ namespace NuGetGallery
             try
             {
                 var removedUser = await UserService.CancelMembershipRequestAsync(account, memberName);
-                MessageService.SendOrganizationMembershipRequestCancelledNotice(account, removedUser);
+                await MessageService.SendOrganizationMembershipRequestCancelledNoticeAsync(account, removedUser);
                 return Json(Strings.CancelMemberRequest_Success);
             }
             catch (EntityException e)
@@ -219,7 +238,7 @@ namespace NuGetGallery
             var account = GetAccount(accountName);
 
             if (account == null
-                || ActionsRequiringPermissions.ManageAccount.CheckPermissions(GetCurrentUser(), account)
+                || ActionsRequiringPermissions.ManageMembership.CheckPermissions(GetCurrentUser(), account)
                     != PermissionsCheckResult.Allowed)
             {
                 return Json(HttpStatusCode.Forbidden, Strings.Unauthorized);
@@ -233,7 +252,7 @@ namespace NuGetGallery
             try
             {
                 var membership = await UserService.UpdateMemberAsync(account, memberName, isAdmin);
-                MessageService.SendOrganizationMemberUpdatedNotice(account, membership);
+                await  MessageService.SendOrganizationMemberUpdatedNoticeAsync(account, membership);
 
                 return Json(new OrganizationMemberViewModel(membership));
             }
@@ -252,9 +271,9 @@ namespace NuGetGallery
 
             var currentUser = GetCurrentUser();
 
-            if (account == null || 
-                (currentUser.Username != memberName && 
-                ActionsRequiringPermissions.ManageAccount.CheckPermissions(currentUser, account)
+            if (account == null ||
+                (currentUser.Username != memberName &&
+                ActionsRequiringPermissions.ManageMembership.CheckPermissions(currentUser, account)
                     != PermissionsCheckResult.Allowed))
             {
                 return Json(HttpStatusCode.Forbidden, Strings.Unauthorized);
@@ -268,12 +287,69 @@ namespace NuGetGallery
             try
             {
                 var removedMember = await UserService.DeleteMemberAsync(account, memberName);
-                MessageService.SendOrganizationMemberRemovedNotice(account, removedMember);
+                await MessageService.SendOrganizationMemberRemovedNoticeAsync(account, removedMember);
                 return Json(Strings.DeleteMember_Success);
             }
             catch (EntityException e)
             {
                 return Json(HttpStatusCode.BadRequest, e.Message);
+            }
+        }
+
+        protected override DeleteAccountViewModel<Organization> GetDeleteAccountViewModel(Organization account)
+        {
+            return GetDeleteOrganizationViewModel(account);
+        }
+
+        private DeleteOrganizationViewModel GetDeleteOrganizationViewModel(Organization account)
+        {
+            return new DeleteOrganizationViewModel(account, GetCurrentUser(), PackageService);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [UIAuthorize]
+        public override async Task<ActionResult> RequestAccountDeletion(string accountName = null)
+        {
+            var account = GetAccount(accountName);
+            var currentUser = GetCurrentUser();
+
+            if (account == null
+                || ActionsRequiringPermissions.ManageAccount.CheckPermissions(GetCurrentUser(), account)
+                    != PermissionsCheckResult.Allowed)
+            {
+                return new HttpNotFoundResult();
+            }
+
+            var model = GetDeleteOrganizationViewModel(account);
+
+            if (model.HasOrphanPackages)
+            {
+                TempData["ErrorMessage"] = "You cannot delete your organization unless you transfer ownership of all of its packages to another account.";
+
+                return RedirectToAction(nameof(DeleteRequest));
+            }
+
+            if (model.HasAdditionalMembers)
+            {
+                TempData["ErrorMessage"] = "You cannot delete your organization unless you remove all other members.";
+
+                return RedirectToAction(nameof(DeleteRequest));
+            }
+
+            var result = await DeleteAccountService.DeleteAccountAsync(account, currentUser, commitAsTransaction: true);
+
+            if (result.Success)
+            {
+                TempData["Message"] = $"Your organization, '{accountName}', was successfully deleted!";
+
+                return RedirectToAction("Organizations", "Users");
+            }
+            else
+            {
+                TempData["ErrorMessage"] = $"There was an issue deleting your organization '{accountName}'. Please contact support for assistance.";
+
+                return RedirectToAction(nameof(DeleteRequest));
             }
         }
 
@@ -286,6 +362,15 @@ namespace NuGetGallery
                 .Concat(account.MemberRequests.Select(m => new OrganizationMemberViewModel(m)));
 
             model.RequiresTenant = account.IsRestrictedToOrganizationTenantPolicy();
+
+            model.CanManageMemberships =
+                ActionsRequiringPermissions.ManageMembership.CheckPermissions(GetCurrentUser(), account)
+                    == PermissionsCheckResult.Allowed;
+        }
+
+        protected override RouteUrlTemplate<string> GetDeleteCertificateForAccountTemplate(string accountName)
+        {
+            return Url.DeleteOrganizationCertificateTemplate(accountName);
         }
     }
 }

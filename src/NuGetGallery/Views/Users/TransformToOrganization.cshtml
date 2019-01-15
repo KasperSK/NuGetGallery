@@ -2,7 +2,6 @@
 @{
     ViewBag.Title = "Transform Account";
     ViewBag.MdPageColumns = Constants.ColumnsFormMd;
-    Layout = "~/Views/Shared/Gallery/Layout.cshtml";
 
     var transformNote = "Administrators have full control over their organizations, including the ability to add and remove other members.";
     var transformNote2 = "Existing API keys owned by this account, '" + CurrentUser.Username + "', will be transferred to '{0}' on transformation. Full access legacy API keys will not be transferred.";
@@ -81,9 +80,9 @@
                         <input type="submit" class="btn btn-primary form-control" value="Transform" />
                     </div>
                     <div class="col-md-6">
-                        <a href="/" role="button" class="btn btn-default form-control" id="cancel-transform">
+                        <button type="button" onclick="window.location.href ='@Url.Home()'" role="button" class="btn btn-default form-control" id="cancel-transform">
                             Cancel
-                        </a>
+                        </button>
                     </div>
                 </div>
             }

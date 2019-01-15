@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 
@@ -50,7 +51,17 @@ namespace NuGetGallery
             FileUriPermissions permissions,
             DateTimeOffset endOfAccess);
 
-        Task SaveFileAsync(string folderName, string fileName, Stream packageFile, bool overwrite = true);
+        Task SaveFileAsync(string folderName, string fileName, Stream file, bool overwrite = true);
+
+        /// <summary>
+        /// Saves the file. An exception should be thrown if the access condition is not met.
+        /// </summary>
+        /// <param name="folderName">The folder that contains the file.</param>
+        /// <param name="fileName">The name of file or relative file path.</param>
+        /// <param name="file">The content that should be saved to the file.</param>
+        /// <param name="accessCondition">The condition used to determine whether to persist the save operation.</param>
+        /// <returns>A task that completes once the file is saved.</returns>
+        Task SaveFileAsync(string folderName, string fileName, Stream file, IAccessCondition accessCondition);
 
         /// <summary>
         /// Copies the source URI to the destination file. If the destination already exists and the content
@@ -97,5 +108,17 @@ namespace NuGetGallery
             string destFolderName,
             string destFileName,
             IAccessCondition destAccessCondition);
+
+        /// <summary>
+        /// Updates metadata on the file.
+        /// </summary>
+        /// <param name="folderName">The folder name.</param>
+        /// <param name="fileName">The file name.</param>
+        /// <param name="updateMetadataAsync">A function that will update file metadata.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        Task SetMetadataAsync(
+            string folderName,
+            string fileName,
+            Func<Lazy<Task<Stream>>, IDictionary<string, string>, Task<bool>> updateMetadataAsync);
     }
 }

@@ -24,7 +24,8 @@ namespace NuGetGallery
         private readonly ISupportRequestService _supportRequestService;
 
         protected PagesController() { }
-        public PagesController(IContentService contentService,
+        public PagesController(
+            IContentService contentService,
             IContentObjectService contentObjectService,
             IMessageService messageService,
             ISupportRequestService supportRequestService)
@@ -93,7 +94,7 @@ namespace NuGetGallery
             var subject = $"Support Request for user '{user.Username}'";
             await _supportRequestService.AddNewSupportRequestAsync(subject, contactForm.Message, user.EmailAddress, "Other", user);
 
-            _messageService.SendContactSupportEmail(request);
+            await _messageService.SendContactSupportEmailAsync(request);
 
             ModelState.Clear();
 
@@ -102,13 +103,17 @@ namespace NuGetGallery
             return View();
         }
 
+        [AcceptVerbs(HttpVerbs.Get | HttpVerbs.Head)]
         public virtual ActionResult Home()
         {
             var identity = OwinContext.Authentication?.User?.Identity as ClaimsIdentity;
             var showTransformModal = ClaimsExtensions.HasDiscontinuedLoginClaims(identity);
-            var transformIntoOrganization = _contentObjectService.LoginDiscontinuationConfiguration
-                .ShouldUserTransformIntoOrganization(GetCurrentUser());
-            return View(new GalleryHomeViewModel(showTransformModal, transformIntoOrganization));
+            var user = GetCurrentUser();
+            var transformIntoOrganization = _contentObjectService
+                .LoginDiscontinuationConfiguration
+                .ShouldUserTransformIntoOrganization(user);
+            var externalIdentityList = ClaimsExtensions.GetExternalCredentialIdentityList(identity);
+            return View(new GalleryHomeViewModel(showTransformModal, transformIntoOrganization, externalIdentityList));
         }
 
         [HttpGet]
@@ -117,6 +122,7 @@ namespace NuGetGallery
             return new HttpStatusCodeResult(HttpStatusCode.OK, "Empty Home");
         }
 
+        [HttpGet]
         public virtual async Task<ActionResult> Terms()
         {
             if (_contentService != null)
@@ -128,6 +134,7 @@ namespace NuGetGallery
             return View();
         }
 
+        [HttpGet]
         public virtual async Task<ActionResult> Privacy()
         {
             if (_contentService != null)

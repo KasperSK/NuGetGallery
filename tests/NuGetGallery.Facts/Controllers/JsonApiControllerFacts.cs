@@ -18,7 +18,7 @@ namespace NuGetGallery.Controllers
         {
             public class ThePackageOwnerModificationMethods : TestContainer
             {
-                public static IEnumerable<object> ThrowsArgumentNullIfMissing_Data
+                public static IEnumerable<object[]> ThrowsArgumentNullIfMissing_Data
                 {
                     get
                     {
@@ -337,8 +337,30 @@ namespace NuGetGallery.Controllers
 
                     public class TheAddPackageOwnerMethod : TestContainer
                     {
+                        public static IEnumerable<object[]> AllCanManagePackageOwners_Data => ThePackageOwnerMethods.AllCanManagePackageOwners_Data;
                         public static IEnumerable<object[]> AllCanManagePackageOwnersPairedWithCanBeAdded_Data = TheAddPackageOwnerMethods.AllCanManagePackageOwnersPairedWithCanBeAdded_Data;
                         public static IEnumerable<object[]> PendingOwnerPropagatesPolicy_Data => TheAddPackageOwnerMethods.PendingOwnerPropagatesPolicy_Data;
+
+                        [Theory]
+                        [MemberData(nameof(AllCanManagePackageOwners_Data))]
+                        public async Task FailsIfUserInputIsEmailAddress(Func<Fakes,User> getCurrentUser)
+                        {
+                            // Arrange
+                            var fakes = Get<Fakes>();
+                            var currentUser = getCurrentUser(fakes);
+                            var usernameToAdd = "notAUsername@email.com";
+                            var package = fakes.Package;
+                            var controller = GetController<JsonApiController>();
+                            controller.SetCurrentUser(currentUser);
+
+                            // Act
+                            var result = await controller.AddPackageOwner(package.Id, usernameToAdd, "a message");
+                            dynamic data = result.Data;
+
+                            // Assert
+                            Assert.False(data.success);
+                            Assert.Equal(Strings.AddOwner_NameIsEmail, data.message);
+                        }
 
                         [Theory]
                         [MemberData(nameof(AllCanManagePackageOwnersPairedWithCanBeAdded_Data))]
@@ -365,7 +387,7 @@ namespace NuGetGallery.Controllers
                                     .Verifiable();
                                 
                                 messageServiceMock
-                                    .Setup(m => m.SendPackageOwnerRequest(
+                                    .Setup(m => m.SendPackageOwnerRequestAsync(
                                         currentUser,
                                         userToAdd,
                                         fakes.Package,
@@ -374,35 +396,38 @@ namespace NuGetGallery.Controllers
                                         TestUtility.GallerySiteRootHttps + $"packages/FakePackage/owners/{userToAdd.Username}/reject/confirmation-code",
                                         "Hello World! Html Encoded &lt;3",
                                         ""))
-                                    .Verifiable();
-
-                                foreach (var owner in fakes.Package.Owners)
-                                {
-                                    messageServiceMock
-                                        .Setup(m => m.SendPackageOwnerRequestInitiatedNotice(
-                                            currentUser,
-                                            owner,
-                                            userToAdd,
-                                            fakes.Package,
-                                            It.IsAny<string>()))
-                                        .Verifiable();
-                                }
-                            }
-                            else
-                            {
-                                packageOwnershipManagementServiceMock
-                                    .Setup(p => p.AddPackageOwnerAsync(fakes.Package, userToAdd))
                                     .Returns(Task.CompletedTask)
                                     .Verifiable();
 
                                 foreach (var owner in fakes.Package.Owners)
                                 {
                                     messageServiceMock
-                                        .Setup(m => m.SendPackageOwnerAddedNotice(
+                                        .Setup(m => m.SendPackageOwnerRequestInitiatedNoticeAsync(
+                                            currentUser,
                                             owner,
                                             userToAdd,
                                             fakes.Package,
                                             It.IsAny<string>()))
+                                        .Returns(Task.CompletedTask)
+                                        .Verifiable();
+                                }
+                            }
+                            else
+                            {
+                                packageOwnershipManagementServiceMock
+                                    .Setup(p => p.AddPackageOwnerAsync(fakes.Package, userToAdd, true))
+                                    .Returns(Task.CompletedTask)
+                                    .Verifiable();
+
+                                foreach (var owner in fakes.Package.Owners)
+                                {
+                                    messageServiceMock
+                                        .Setup(m => m.SendPackageOwnerAddedNoticeAsync(
+                                            owner,
+                                            userToAdd,
+                                            fakes.Package,
+                                            It.IsAny<string>()))
+                                        .Returns(Task.CompletedTask)
                                         .Verifiable();
                                 }
                             }
@@ -537,10 +562,10 @@ namespace NuGetGallery.Controllers
                         // Assert
                         Assert.True(data.success);
 
-                        packageOwnershipManagementService.Verify(x => x.DeletePackageOwnershipRequestAsync(package, requestedUser));
+                        packageOwnershipManagementService.Verify(x => x.DeletePackageOwnershipRequestAsync(package, requestedUser, true));
 
                         GetMock<IMessageService>()
-                            .Verify(x => x.SendPackageOwnerRequestCancellationNotice(currentUser, requestedUser, package));
+                            .Verify(x => x.SendPackageOwnerRequestCancellationNoticeAsync(currentUser, requestedUser, package));
                     }
 
                     [Theory]
@@ -571,7 +596,7 @@ namespace NuGetGallery.Controllers
                         packageOwnershipManagementService.Verify(x => x.RemovePackageOwnerAsync(package, currentUser, userToRemove, It.IsAny<bool>()));
 
                         GetMock<IMessageService>()
-                            .Verify(x => x.SendPackageOwnerRemovedNotice(currentUser, userToRemove, package));
+                            .Verify(x => x.SendPackageOwnerRemovedNoticeAsync(currentUser, userToRemove, package));
                     }
                 }
 
@@ -650,6 +675,7 @@ namespace NuGetGallery.Controllers
 
                 public static IEnumerable<object[]> AllCannotManagePackageOwners_Data => ThePackageOwnerMethods.AllCannotManagePackageOwners_Data;
                 
+                [Fact]
                 public void ReturnsFailureIfPackageNotFound()
                 {
                     // Arrange
@@ -660,7 +686,6 @@ namespace NuGetGallery.Controllers
                     dynamic data = ((JsonResult)result).Data;
 
                     // Assert
-                    Assert.False(data.success);
                     Assert.Equal("Package not found.", data.message);
                 }
 
@@ -678,27 +703,29 @@ namespace NuGetGallery.Controllers
                     var result = controller.GetPackageOwners(fakes.Package.Id, fakes.Package.Packages.First().Version);
 
                     // Assert
-                    Assert.IsType(typeof(HttpUnauthorizedResult), result);
+                    Assert.IsType<HttpUnauthorizedResult>(result);
                 }
 
+                [Fact]
                 public void ReturnsExpectedDataAsOwner()
                 {
                     var fakes = Get<Fakes>();
                     var currentUser = fakes.Owner;
                     var result = InvokeAsUser(currentUser);
 
-                    Assert.True(result.Any(m => ModelMatchesUser(m, fakes.Owner, grantsCurrentUserAccess: true, isCurrentUserIsAdminOfOrganization: false)));
-                    Assert.True(result.Any(m => ModelMatchesUser(m, fakes.OrganizationOwner, grantsCurrentUserAccess: false, isCurrentUserIsAdminOfOrganization: false)));
+                    Assert.Contains(result, m => ModelMatchesUser(m, fakes.Owner, grantsCurrentUserAccess: true, isCurrentUserAdminOfOrganization: false));
+                    Assert.Contains(result, m => ModelMatchesUser(m, fakes.OrganizationOwner, grantsCurrentUserAccess: false, isCurrentUserAdminOfOrganization: false));
                 }
 
+                [Fact]
                 public void ReturnsExpectedDataAsOrganizationAdmin()
                 {
                     var fakes = Get<Fakes>();
-                    var currentUser = fakes.Owner;
+                    var currentUser = fakes.OrganizationOwnerAdmin;
                     var result = InvokeAsUser(currentUser);
 
-                    Assert.True(result.Any(m => ModelMatchesUser(m, fakes.Owner, grantsCurrentUserAccess: false, isCurrentUserIsAdminOfOrganization: false)));
-                    Assert.True(result.Any(m => ModelMatchesUser(m, fakes.OrganizationOwner, grantsCurrentUserAccess: true, isCurrentUserIsAdminOfOrganization: true)));
+                    Assert.Contains(result, m => ModelMatchesUser(m, fakes.Owner, grantsCurrentUserAccess: false, isCurrentUserAdminOfOrganization: false));
+                    Assert.Contains(result, m => ModelMatchesUser(m, fakes.OrganizationOwner, grantsCurrentUserAccess: true, isCurrentUserAdminOfOrganization: true));
                 }
 
                 private IEnumerable<PackageOwnersResultViewModel> InvokeAsUser(User currentUser)
@@ -706,17 +733,17 @@ namespace NuGetGallery.Controllers
                     var controller = GetController<JsonApiController>();
                     controller.SetCurrentUser(currentUser);
                     
-                    var result = controller.GetPackageOwners("fakeId", "2.0.0");
+                    var result = controller.GetPackageOwners("FakePackage", "2.0");
                     return ((JsonResult)result).Data as IEnumerable<PackageOwnersResultViewModel>;
                 }
 
-                private bool ModelMatchesUser(PackageOwnersResultViewModel model, User user, bool grantsCurrentUserAccess, bool isCurrentUserIsAdminOfOrganization)
+                private bool ModelMatchesUser(PackageOwnersResultViewModel model, User user, bool grantsCurrentUserAccess, bool isCurrentUserAdminOfOrganization)
                 {
                     return 
                         user.Username == model.Name &&
                         user.EmailAddress == model.EmailAddress &&
                         grantsCurrentUserAccess == model.GrantsCurrentUserAccess &&
-                        isCurrentUserIsAdminOfOrganization == model.IsCurrentUserAdminOfOrganization;
+                        isCurrentUserAdminOfOrganization == model.IsCurrentUserAdminOfOrganization;
                 }
             }
 

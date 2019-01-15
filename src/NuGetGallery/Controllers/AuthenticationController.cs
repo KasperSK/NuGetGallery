@@ -31,6 +31,8 @@ namespace NuGetGallery
 
         private readonly ICredentialBuilder _credentialBuilder;
 
+        private readonly IContentObjectService _contentObjectService;
+
         private const string EMAIL_FORMAT_PADDING = "**********";
 
         // Prioritize the external authentication mechanism.
@@ -43,32 +45,14 @@ namespace NuGetGallery
             AuthenticationService authService,
             IUserService userService,
             IMessageService messageService,
-            ICredentialBuilder credentialBuilder)
+            ICredentialBuilder credentialBuilder,
+            IContentObjectService contentObjectService)
         {
-            if (authService == null)
-            {
-                throw new ArgumentNullException(nameof(authService));
-            }
-
-            if (userService == null)
-            {
-                throw new ArgumentNullException(nameof(userService));
-            }
-
-            if (messageService == null)
-            {
-                throw new ArgumentNullException(nameof(messageService));
-            }
-
-            if (credentialBuilder == null)
-            {
-                throw new ArgumentNullException(nameof(credentialBuilder));
-            }
-
-            _authService = authService;
-            _userService = userService;
-            _messageService = messageService;
-            _credentialBuilder = credentialBuilder;
+            _authService = authService ?? throw new ArgumentNullException(nameof(authService));
+            _userService = userService ?? throw new ArgumentNullException(nameof(userService));
+            _messageService = messageService ?? throw new ArgumentNullException(nameof(messageService));
+            _credentialBuilder = credentialBuilder ?? throw new ArgumentNullException(nameof(credentialBuilder));
+            _contentObjectService = contentObjectService ?? throw new ArgumentNullException(nameof(contentObjectService));
         }
 
         /// <summary>
@@ -166,7 +150,7 @@ namespace NuGetGallery
             }
 
             var authenticatedUser = authenticationResult.AuthenticatedUser;
-            
+            bool usedMultiFactorAuthentication = false;
             if (linkingAccount)
             {
                 // Verify account has no other external accounts
@@ -180,11 +164,14 @@ namespace NuGetGallery
                 }
 
                 // Link with an external account
-                authenticatedUser = await AssociateCredential(authenticatedUser);
+                var loginUserDetails = await AssociateCredential(authenticatedUser);
+                authenticatedUser = loginUserDetails?.AuthenticatedUser;
                 if (authenticatedUser == null)
                 {
                     return ExternalLinkExpired();
                 }
+
+                usedMultiFactorAuthentication = loginUserDetails.UsedMultiFactorAuthentication;
             }
 
             // If we are an administrator and Gallery.EnforcedAuthProviderForAdmin is set
@@ -197,7 +184,7 @@ namespace NuGetGallery
             }
 
             // Create session
-            await _authService.CreateSessionAsync(OwinContext, authenticatedUser);
+            await _authService.CreateSessionAsync(OwinContext, authenticatedUser, usedMultiFactorAuthentication);
 
             TempData["ShowPasswordDeprecationWarning"] = true;
             return SafeRedirect(returnUrl);
@@ -265,6 +252,7 @@ namespace NuGetGallery
             }
 
             AuthenticatedUser user;
+            var usedMultiFactorAuthentication = false;
             try
             {
                 if (linkingAccount)
@@ -275,6 +263,7 @@ namespace NuGetGallery
                         return ExternalLinkExpired();
                     }
 
+                    usedMultiFactorAuthentication = result.LoginDetails?.WasMultiFactorAuthenticated ?? false;
                     user = await _authService.Register(
                         model.Register.Username,
                         model.Register.EmailAddress,
@@ -298,7 +287,7 @@ namespace NuGetGallery
             // Send a new account email
             if (NuGetContext.Config.Current.ConfirmEmailAddresses && !string.IsNullOrEmpty(user.User.UnconfirmedEmailAddress))
             {
-                _messageService.SendNewAccountEmail(
+                await _messageService.SendNewAccountEmailAsync(
                     user.User,
                     Url.ConfirmEmail(
                         user.User.Username,
@@ -316,7 +305,7 @@ namespace NuGetGallery
             }
 
             // Create session
-            await _authService.CreateSessionAsync(OwinContext, user);
+            await _authService.CreateSessionAsync(OwinContext, user, usedMultiFactorAuthentication);
             return RedirectFromRegister(returnUrl);
         }
 
@@ -336,7 +325,7 @@ namespace NuGetGallery
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public virtual JsonResult SignInAssistance(string username, string providedEmailAddress)
+        public virtual async Task<JsonResult> SignInAssistance(string username, string providedEmailAddress)
         {
             // If provided email address is empty or null, return the result with a formatted
             // email address, otherwise send sign-in assistance email to the associated mail address.
@@ -348,7 +337,7 @@ namespace NuGetGallery
                     throw new ArgumentException(Strings.UserNotFound);
                 }
 
-                var email = user.EmailAddress;
+                var email = user.EmailAddress ?? user.UnconfirmedEmailAddress;
                 if (string.IsNullOrWhiteSpace(providedEmailAddress))
                 {
                     var formattedEmail = FormatEmailAddressForAssistance(email);
@@ -363,7 +352,7 @@ namespace NuGetGallery
                     else
                     {
                         var externalCredentials = user.Credentials.Where(cred => cred.IsExternal());
-                        _messageService.SendSigninAssistanceEmail(new MailAddress(email, user.Username), externalCredentials);
+                        await _messageService.SendSigninAssistanceEmailAsync(new MailAddress(email, user.Username), externalCredentials);
                         return Json(new { success = true });
                     }
                 }
@@ -465,15 +454,12 @@ namespace NuGetGallery
             if (await _authService.TryReplaceCredential(user, newCredential))
             {
                 // Remove the password credential after linking to external account.
-                var passwordCred = user.GetPasswordCredential();
-                if (passwordCred != null)
-                {
-                    await _authService.RemoveCredential(user, passwordCred);
-                }
+                await RemovePasswordCredential(user);
 
                 // Authenticate with the new credential after successful replacement
                 var authenticatedUser = await _authService.Authenticate(newCredential);
-                await _authService.CreateSessionAsync(OwinContext, authenticatedUser);
+                var usedMultiFactorAuthentication = result.LoginDetails?.WasMultiFactorAuthenticated ?? false;
+                await _authService.CreateSessionAsync(OwinContext, authenticatedUser, usedMultiFactorAuthentication);
 
                 // Get email address of the new credential for updating success message
                 var newEmailAddress = GetEmailAddressFromExternalLoginResult(result, out string errorReason);
@@ -523,13 +509,38 @@ namespace NuGetGallery
                 {
                     // Invoke the authentication again enforcing multi-factor authentication for the same provider.
                     return ChallengeAuthentication(
-                        Url.LinkExternalAccount(returnUrl), 
-                        result.Authenticator.Name, 
+                        Url.LinkExternalAccount(returnUrl),
+                        result.Authenticator.Name,
                         new AuthenticationPolicy() { Email = result.LoginDetails.EmailUsed, EnforceMultiFactorAuthentication = true });
                 }
 
+                // Remove the password login if the password logins are deprecated and enforced discontinuation.
+                if (NuGetContext.Config.Current.DeprecateNuGetPasswordLogins
+                    && _contentObjectService.LoginDiscontinuationConfiguration.IsPasswordLoginDiscontinuedForAll()
+                    && result.Authentication.CredentialUsed.IsExternal()
+                    && result.Authentication.User.HasPasswordCredential())
+                {
+                    // Remove password logins when a user signs in with an external login.
+                    TempData["Message"] = string.Format(Strings.DiscontinuedLogin_PasswordRemoved, NuGetContext.Config.Current.Brand);
+                    await RemovePasswordCredential(result.Authentication.User);
+                }
+
                 // Create session
-                await _authService.CreateSessionAsync(OwinContext, result.Authentication);
+                await _authService.CreateSessionAsync(OwinContext,
+                    result.Authentication,
+                    wasMultiFactorAuthenticated: result?.LoginDetails?.WasMultiFactorAuthenticated ?? false);
+
+                // Update the 2FA if used during login but user does not have it set on their account. Only for personal microsoft accounts.
+                if (result?.LoginDetails != null
+                    && result.LoginDetails.WasMultiFactorAuthenticated
+                    && !result.Authentication.User.EnableMultiFactorAuthentication
+                    && CredentialTypes.IsMicrosoftAccount(result.Credential.Type))
+                {
+                    await _userService.ChangeMultiFactorAuthentication(result.Authentication.User, enableMultiFactor: true);
+                    OwinContext.AddClaim(NuGetClaims.EnabledMultiFactorAuthentication);
+                    TempData["Message"] = Strings.MultiFactorAuth_LoginUpdate;
+                }
+
                 return SafeRedirect(returnUrl);
             }
             else
@@ -648,7 +659,7 @@ namespace NuGetGallery
             return RedirectToAction(actionName: "Thanks", controllerName: "Users");
         }
 
-        private async Task<AuthenticatedUser> AssociateCredential(AuthenticatedUser user)
+        private async Task<LoginUserDetails> AssociateCredential(AuthenticatedUser user)
         {
             var result = await _authService.ReadExternalLoginCredential(OwinContext);
             if (result.ExternalIdentity == null)
@@ -660,16 +671,25 @@ namespace NuGetGallery
 
             await _authService.AddCredential(user.User, result.Credential);
 
-            var passwordCredential = user.User.GetPasswordCredential();
-            if (passwordCredential != null)
-            {
-                await _authService.RemoveCredential(user.User, passwordCredential);
-            }
+            await RemovePasswordCredential(user.User);
 
             // Notify the user of the change
-            _messageService.SendCredentialAddedNotice(user.User, _authService.DescribeCredential(result.Credential));
+            await _messageService.SendCredentialAddedNoticeAsync(user.User, _authService.DescribeCredential(result.Credential));
 
-            return new AuthenticatedUser(user.User, result.Credential);
+            return new LoginUserDetails
+            {
+                AuthenticatedUser = new AuthenticatedUser(user.User, result.Credential),
+                UsedMultiFactorAuthentication = result.LoginDetails?.WasMultiFactorAuthenticated ?? false
+            };
+        }
+
+        private async Task RemovePasswordCredential(User user)
+        {
+            var passwordCredential = user.GetPasswordCredential();
+            if (passwordCredential != null)
+            {
+                await _authService.RemoveCredential(user, passwordCredential);
+            }
         }
 
         private List<AuthenticationProviderViewModel> GetProviders()

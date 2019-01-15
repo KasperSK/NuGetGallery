@@ -14,6 +14,9 @@ using NuGetGallery.Framework;
 using NuGetGallery.Infrastructure.Authentication;
 using Xunit;
 using NuGet.Versioning;
+using NuGet.Services.Validation;
+using NuGet.Services.Validation.Issues;
+using System.Threading.Tasks;
 
 namespace NuGetGallery
 {
@@ -26,7 +29,7 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void WillSendEmailToGalleryOwner()
+            public async Task WillSendEmailToGalleryOwner()
             {
                 // Arrange
                 var from = new MailAddress("legit@example.com", "too");
@@ -39,7 +42,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.ReportAbuse(
+                await messageService.ReportAbuseAsync(
                     new ReportPackageRequest
                     {
                         AlreadyContactedOwners = true,
@@ -67,7 +70,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void WillCopySenderIfAsked()
+            public async Task WillCopySenderIfAsked()
             {
                 var from = new MailAddress("legit@example.com", "too");
                 var package = new Package
@@ -94,7 +97,7 @@ namespace NuGetGallery
                     Url = TestUtility.MockUrlHelper(),
                     CopySender = true,
                 };
-                messageService.ReportAbuse(reportPackageRequest);
+                await messageService.ReportAbuseAsync(reportPackageRequest);
 
                 var message = messageService.MockMailSender.Sent.Single();
                 Assert.Equal(TestGalleryOwner, message.To.Single());
@@ -109,7 +112,7 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void WillSendEmailToGalleryOwner()
+            public async Task WillSendEmailToGalleryOwner()
             {
                 var from = new MailAddress("legit@example.com", "too");
                 var owner = new User
@@ -129,7 +132,7 @@ namespace NuGetGallery
                 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
-                messageService.ReportMyPackage(
+                await messageService.ReportMyPackageAsync(
                     new ReportPackageRequest
                     {
                         FromAddress = from,
@@ -155,7 +158,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void WillCopySenderIfAsked()
+            public async Task WillCopySenderIfAsked()
             {
                 var from = new MailAddress("legit@example.com", "too");
                 var package = new Package
@@ -182,7 +185,7 @@ namespace NuGetGallery
                     Url = TestUtility.MockUrlHelper(),
                     CopySender = true,
                 };
-                messageService.ReportMyPackage(reportPackageRequest);
+                await messageService.ReportMyPackageAsync(reportPackageRequest);
 
                 var message = messageService.MockMailSender.Sent.Single();
                 Assert.Equal(TestGalleryOwner, message.To.Single());
@@ -197,7 +200,7 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void WillCopySenderIfAsked()
+            public async Task WillCopySenderIfAsked()
             {
                 // arrange
                 var packageId = "smangit";
@@ -225,13 +228,13 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // act
-                messageService.SendContactOwnersMessage(from, package, "http://someurl/", "Test message", "http://someotherurl/", true);
+                await messageService.SendContactOwnersMessageAsync(from, package, "http://someurl/", "Test message", "http://someotherurl/", true);
                 var messages = messageService.MockMailSender.Sent;
 
                 // assert
                 Assert.Equal(2, messages.Count);
                 Assert.Equal(package.PackageRegistration.Owners.Count, messages[0].To.Count);
-                Assert.Equal(1, messages[1].To.Count);
+                Assert.Single(messages[1].To);
                 Assert.Equal(ownerAddress, messages[0].To[0].Address);
                 Assert.Equal(ownerAddress2, messages[0].To[1].Address);
                 Assert.Equal(messages[1].ReplyToList.Single(), messages[1].To.First());
@@ -242,7 +245,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void WillSendEmailToAllOwners()
+            public async Task WillSendEmailToAllOwners()
             {
                 var id = "smangit";
                 var version = "1.0.0";
@@ -268,7 +271,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 var packageUrl = "http://packageUrl/";
-                messageService.SendContactOwnersMessage(from, package, packageUrl, "Test message", "http://emailSettingsUrl/", false);
+                await messageService.SendContactOwnersMessageAsync(from, package, packageUrl, "Test message", "http://emailSettingsUrl/", false);
                 var message = messageService.MockMailSender.Sent.Last();
 
                 Assert.Equal(owner1Email, message.To[0].Address);
@@ -283,7 +286,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void WillNotSendEmailToOwnerThatOptsOut()
+            public async Task WillNotSendEmailToOwnerThatOptsOut()
             {
                 // arrange
                 var packageId = "smangit";
@@ -310,16 +313,16 @@ namespace NuGetGallery
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
-                messageService.SendContactOwnersMessage(from, package, "http://someurl/", "Test message", "http://someotherurl/", false);
+                await messageService.SendContactOwnersMessageAsync(from, package, "http://someurl/", "Test message", "http://someotherurl/", false);
                 var message = messageService.MockMailSender.Sent.Last();
 
                 // assert
                 Assert.Equal(ownerAddress, message.To[0].Address);
-                Assert.Equal(1, message.To.Count);
+                Assert.Single(message.To);
             }
 
             [Fact]
-            public void WillNotAttemptToSendIfNoOwnersAllow()
+            public async Task WillNotAttemptToSendIfNoOwnersAllow()
             {
                 // arrange
                 var packageId = "smangit";
@@ -345,14 +348,14 @@ namespace NuGetGallery
                 };
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendContactOwnersMessage(from, package, "http://someurl/", "Test message", "http://someotherurl/", false);
+                await messageService.SendContactOwnersMessageAsync(from, package, "http://someurl/", "Test message", "http://someotherurl/", false);
 
                 // assert
                 Assert.Empty(messageService.MockMailSender.Sent);
             }
 
             [Fact]
-            public void WillNotCopySenderIfNoOwnersAllow()
+            public async Task WillNotCopySenderIfNoOwnersAllow()
             {
                 // arrange
                 var packageId = "smangit";
@@ -378,7 +381,7 @@ namespace NuGetGallery
                 };
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendContactOwnersMessage(from, package, "http://someurl/", "Test message", "http://someotherurl/", false);
+                await messageService.SendContactOwnersMessageAsync(from, package, "http://someurl/", "Test message", "http://someotherurl/", false);
 
                 // assert
                 Assert.Empty(messageService.MockMailSender.Sent);
@@ -391,14 +394,14 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void WillSendEmailToNewUser(bool isOrganization)
+            public async Task WillSendEmailToNewUser(bool isOrganization)
             {
                 var unconfirmedEmailAddress = "unconfirmed@unconfirmed.com";
                 var user = isOrganization ? new Organization("organization") : new User("user");
                 user.UnconfirmedEmailAddress = unconfirmedEmailAddress;
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendNewAccountEmail(user, "http://example.com/confirmation-token-url");
+                await messageService.SendNewAccountEmailAsync(user, "http://example.com/confirmation-token-url");
                 var message = messageService.MockMailSender.Sent.Last();
 
                 Assert.Equal(unconfirmedEmailAddress, message.To[0].Address);
@@ -415,7 +418,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void WillSendEmail(bool isOrganization)
+            public async Task WillSendEmail(bool isOrganization)
             {
                 var unconfirmedEmailAddress = "unconfirmed@unconfirmed.com";
                 var user = isOrganization ? new Organization("organization") : new User("user");
@@ -423,7 +426,7 @@ namespace NuGetGallery
                 var tokenUrl = "http://example.com/confirmation-token-url";
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendEmailChangeConfirmationNotice(user, tokenUrl);
+                await messageService.SendEmailChangeConfirmationNoticeAsync(user, tokenUrl);
                 var message = messageService.MockMailSender.Sent.Last();
 
                 Assert.Equal(user.UnconfirmedEmailAddress, message.To[0].Address);
@@ -439,7 +442,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void WillSendEmail(bool isOrganization)
+            public async Task WillSendEmail(bool isOrganization)
             {
                 var newEmail = "new@email.com";
                 var user = isOrganization ? new Organization("organization") : new User("user");
@@ -447,7 +450,7 @@ namespace NuGetGallery
                 var oldEmail = "old@email.com";
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendEmailChangeNoticeToPreviousEmailAddress(user, oldEmail);
+                await messageService.SendEmailChangeNoticeToPreviousEmailAddressAsync(user, oldEmail);
                 var message = messageService.MockMailSender.Sent.Last();
 
                 var accountString = isOrganization ? "organization" : "account";
@@ -465,7 +468,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void SendsPackageOwnerRequestConfirmationUrl(bool isOrganization)
+            public async Task SendsPackageOwnerRequestConfirmationUrl(bool isOrganization)
             {
                 var to = isOrganization ? GetOrganizationWithRecipients() : new User();
                 to.Username = "Noob";
@@ -480,7 +483,7 @@ namespace NuGetGallery
                 const string userMessage = "Hello World!";
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageOwnerRequest(from, to, package, packageUrl, confirmationUrl, rejectionUrl, userMessage, string.Empty);
+                await messageService.SendPackageOwnerRequestAsync(from, to, package, packageUrl, confirmationUrl, rejectionUrl, userMessage, string.Empty);
                 var message = messageService.MockMailSender.Sent.Last();
 
                 var yourString = isOrganization ? "your organization" : "you";
@@ -506,7 +509,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void SendsPackageOwnerRequestConfirmationUrlWithoutUserMessage(bool isOrganization)
+            public async Task SendsPackageOwnerRequestConfirmationUrlWithoutUserMessage(bool isOrganization)
             {
                 var to = isOrganization ? GetOrganizationWithRecipients() : new User();
                 to.Username = "Noob";
@@ -519,7 +522,7 @@ namespace NuGetGallery
                 const string rejectionUrl = "http://example.com/rejection-token-url";
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageOwnerRequest(from, to, package, packageUrl, confirmationUrl, rejectionUrl, string.Empty, string.Empty);
+                await messageService.SendPackageOwnerRequestAsync(from, to, package, packageUrl, confirmationUrl, rejectionUrl, string.Empty, string.Empty);
                 var message = messageService.MockMailSender.Sent.Last();
 
                 Assert.DoesNotContain("The user 'Existing' added the following message for you", message.Body);
@@ -528,7 +531,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void DoesNotSendRequestIfUserDoesNotAllowEmails(bool isOrganization)
+            public async Task DoesNotSendRequestIfUserDoesNotAllowEmails(bool isOrganization)
             {
                 var to = isOrganization ? GetOrganizationWithoutRecipients() : new User();
                 to.Username = "Noob";
@@ -541,7 +544,7 @@ namespace NuGetGallery
                 const string rejectionUrl = "http://example.com/rejection-token-url";
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageOwnerRequest(from, to, package, packageUrl, confirmationUrl, rejectionUrl, string.Empty, string.Empty);
+                await messageService.SendPackageOwnerRequestAsync(from, to, package, packageUrl, confirmationUrl, rejectionUrl, string.Empty, string.Empty);
 
                 Assert.Empty(messageService.MockMailSender.Sent);
             }
@@ -551,7 +554,7 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void SendsNotice()
+            public async Task SendsNotice()
             {
                 var requestingOwner = new User("Existing") { EmailAddress = "existing-owner@example.com" };
                 var receivingOwner = new User("Receiving")
@@ -572,7 +575,7 @@ namespace NuGetGallery
                 };
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageOwnerRequestInitiatedNotice(requestingOwner, receivingOwner, newOwner, package, cancelUrl);
+                await messageService.SendPackageOwnerRequestInitiatedNoticeAsync(requestingOwner, receivingOwner, newOwner, package, cancelUrl);
                 var message = messageService.MockMailSender.Sent.Last();
 
                 Assert.Equal(receivingOwner.EmailAddress, message.To[0].Address);
@@ -584,7 +587,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void DoesNotSendNoticeIfUserDoesNotAllowEmails()
+            public async Task DoesNotSendNoticeIfUserDoesNotAllowEmails()
             {
                 var requestingOwner = new User("Existing") { EmailAddress = "existing-owner@example.com" };
                 var receivingOwner = new User("Receiving")
@@ -605,7 +608,7 @@ namespace NuGetGallery
                 };
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageOwnerRequestInitiatedNotice(requestingOwner, receivingOwner, newOwner, package, cancelUrl);
+                await messageService.SendPackageOwnerRequestInitiatedNoticeAsync(requestingOwner, receivingOwner, newOwner, package, cancelUrl);
 
                 Assert.Empty(messageService.MockMailSender.Sent);
             }
@@ -617,7 +620,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void SendsNotice(bool isOrganization)
+            public async Task SendsNotice(bool isOrganization)
             {
                 var requestingOwner = isOrganization ? GetOrganizationWithRecipients() : new User();
                 requestingOwner.Username = "Existing";
@@ -634,7 +637,7 @@ namespace NuGetGallery
                 };
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageOwnerRequestRejectionNotice(requestingOwner, newOwner, package);
+                await messageService.SendPackageOwnerRequestRejectionNoticeAsync(requestingOwner, newOwner, package);
                 var message = messageService.MockMailSender.Sent.Last();
 
                 var yourString = isOrganization ? "your organization's" : "your";
@@ -656,7 +659,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void DoesNotSendNoticeIfUserDoesNotAllowEmails(bool isOrganization)
+            public async Task DoesNotSendNoticeIfUserDoesNotAllowEmails(bool isOrganization)
             {
                 var requestingOwner = isOrganization ? GetOrganizationWithoutRecipients() : new User();
                 requestingOwner.Username = "Existing";
@@ -673,7 +676,7 @@ namespace NuGetGallery
                 };
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageOwnerRequestRejectionNotice(requestingOwner, newOwner, package);
+                await messageService.SendPackageOwnerRequestRejectionNoticeAsync(requestingOwner, newOwner, package);
 
                 Assert.Empty(messageService.MockMailSender.Sent);
             }
@@ -685,7 +688,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void SendsNotice(bool isOrganization)
+            public async Task SendsNotice(bool isOrganization)
             {
                 var requestingOwner = new User { Username = "Existing", EmailAddress = "existing-owner@example.com" };
                 var newOwner = isOrganization ? GetOrganizationWithRecipients() : new User();
@@ -695,7 +698,7 @@ namespace NuGetGallery
                 var package = new PackageRegistration { Id = "CoolStuff" };
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageOwnerRequestCancellationNotice(requestingOwner, newOwner, package);
+                await messageService.SendPackageOwnerRequestCancellationNoticeAsync(requestingOwner, newOwner, package);
                 var message = messageService.MockMailSender.Sent.Last();
 
                 var yourString = isOrganization ? "your organization" : "you";
@@ -717,7 +720,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void DoesNotSendNoticeIfUserDoesNotAllowEmails(bool isOrganization)
+            public async Task DoesNotSendNoticeIfUserDoesNotAllowEmails(bool isOrganization)
             {
                 var requestingOwner = new User { Username = "Existing", EmailAddress = "existing-owner@example.com" };
 
@@ -735,7 +738,7 @@ namespace NuGetGallery
                 };
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageOwnerRequestCancellationNotice(requestingOwner, newOwner, package);
+                await  messageService.SendPackageOwnerRequestCancellationNoticeAsync(requestingOwner, newOwner, package);
 
                 Assert.Empty(messageService.MockMailSender.Sent);
             }
@@ -747,7 +750,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void SendsPackageOwnerAddedNotice(bool isOrganization)
+            public async Task SendsPackageOwnerAddedNotice(bool isOrganization)
             {
                 // Arrange
                 var toUser = isOrganization ? GetOrganizationWithRecipients() : new User();
@@ -760,7 +763,7 @@ namespace NuGetGallery
                 var packageUrl = "packageUrl";
 
                 // Act
-                messageService.SendPackageOwnerAddedNotice(toUser, newUser, package, packageUrl);
+                await messageService.SendPackageOwnerAddedNoticeAsync(toUser, newUser, package, packageUrl);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -772,7 +775,7 @@ namespace NuGetGallery
                 {
                     Assert.Equal(toUser.EmailAddress, message.To[0].Address);
                 }
-                Assert.Equal(TestGalleryNoReplyAddress.Address, "noreply@example.com");
+                Assert.Equal("noreply@example.com", TestGalleryNoReplyAddress.Address);
                 Assert.Contains($"Package ownership update for '{package.Id}'", message.Subject);
                 Assert.Contains($"User '{newUser.Username}' is now an owner of the package ['{package.Id}']({packageUrl}).", message.Body);
             }
@@ -780,7 +783,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void DoesNotSendPackageOwnerAddedNoticeIfUserDoesNotAllowEmails(bool isOrganization)
+            public async Task DoesNotSendPackageOwnerAddedNoticeIfUserDoesNotAllowEmails(bool isOrganization)
             {
                 // Arrange
                 var toUser = isOrganization ? GetOrganizationWithoutRecipients() : new User();
@@ -792,7 +795,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendPackageOwnerAddedNotice(toUser, newUser, package, "packageUrl");
+                await messageService.SendPackageOwnerAddedNoticeAsync(toUser, newUser, package, "packageUrl");
 
                 // Assert
                 Assert.Empty(messageService.MockMailSender.Sent);
@@ -805,7 +808,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void SendsPackageOwnerRemovedNotice(bool isOrganization)
+            public async Task SendsPackageOwnerRemovedNotice(bool isOrganization)
             {
                 var to = isOrganization ? GetOrganizationWithRecipients() : new User();
                 to.Username = "Noob";
@@ -815,7 +818,7 @@ namespace NuGetGallery
                 var package = new PackageRegistration { Id = "CoolStuff" };
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageOwnerRemovedNotice(from, to, package);
+                await messageService.SendPackageOwnerRemovedNoticeAsync(from, to, package);
                 var message = messageService.MockMailSender.Sent.Last();
 
                 if (isOrganization)
@@ -835,7 +838,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void DoesNotSendRemovedNoticeIfUserDoesNotAllowEmails(bool isOrganization)
+            public async Task DoesNotSendRemovedNoticeIfUserDoesNotAllowEmails(bool isOrganization)
             {
                 var to = isOrganization ? GetOrganizationWithoutRecipients() : new User();
                 to.Username = "Noob";
@@ -845,7 +848,7 @@ namespace NuGetGallery
                 var package = new PackageRegistration { Id = "CoolStuff" };
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageOwnerRemovedNotice(from, to, package);
+                await messageService.SendPackageOwnerRemovedNoticeAsync(from, to, package);
 
                 Assert.Empty(messageService.MockMailSender.Sent);
             }
@@ -860,12 +863,12 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void WillSendInstructions()
+            public async Task WillSendInstructions()
             {
                 var user = new User { EmailAddress = "legit@example.com", Username = "too" };
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPasswordResetInstructions(user, "http://example.com/pwd-reset-token-url", true);
+                await messageService.SendPasswordResetInstructionsAsync(user, "http://example.com/pwd-reset-token-url", true);
                 var message = messageService.MockMailSender.Sent.Last();
 
                 Assert.Equal("legit@example.com", message.To[0].Address);
@@ -887,7 +890,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void UsesProviderNounToDescribeCredentialIfPresent()
+            public async Task UsesProviderNounToDescribeCredentialIfPresent()
             {
                 var user = new User { EmailAddress = "legit@example.com", Username = "foo" };
                 var cred = new CredentialBuilder().CreateExternalCredential("MicrosoftAccount", "abc123", "Test User");
@@ -895,7 +898,7 @@ namespace NuGetGallery
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
-                messageService.SendCredentialRemovedNotice(user, _authenticationService.DescribeCredential(cred));
+                await messageService.SendCredentialRemovedNoticeAsync(user, _authenticationService.DescribeCredential(cred));
                 var message = messageService.MockMailSender.Sent.Last();
 
                 Assert.Equal(user.ToMailAddress(), message.To[0]);
@@ -905,13 +908,13 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void UsesTypeCaptionToDescribeCredentialIfNoProviderNounPresent()
+            public async Task UsesTypeCaptionToDescribeCredentialIfNoProviderNounPresent()
             {
                 var user = new User { EmailAddress = "legit@example.com", Username = "foo" };
                 var cred = new CredentialBuilder().CreatePasswordCredential("bogus");
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendCredentialRemovedNotice(user, _authenticationService.DescribeCredential(cred));
+                await messageService.SendCredentialRemovedNoticeAsync(user, _authenticationService.DescribeCredential(cred));
                 var message = messageService.MockMailSender.Sent.Last();
 
                 Assert.Equal(user.ToMailAddress(), message.To[0]);
@@ -921,7 +924,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void ApiKeyRemovedMessageIsCorrect()
+            public async Task ApiKeyRemovedMessageIsCorrect()
             {
                 var user = new User { EmailAddress = "legit@example.com", Username = "foo" };
                 var cred = TestCredentialHelper.CreateV2ApiKey(Guid.NewGuid(), TimeSpan.FromDays(1)).WithDefaultScopes();
@@ -929,7 +932,7 @@ namespace NuGetGallery
                 cred.User = user;
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendCredentialRemovedNotice(user, _authenticationService.DescribeCredential(cred));
+                await messageService.SendCredentialRemovedNoticeAsync(user, _authenticationService.DescribeCredential(cred));
                 var message = messageService.MockMailSender.Sent.Last();
 
                 Assert.Equal(user.ToMailAddress(), message.To[0]);
@@ -950,14 +953,14 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void UsesProviderNounToDescribeCredentialIfPresent()
+            public async Task UsesProviderNounToDescribeCredentialIfPresent()
             {
                 var user = new User { EmailAddress = "legit@example.com", Username = "foo" };
                 var cred = new CredentialBuilder().CreateExternalCredential("MicrosoftAccount", "abc123", "Test User");
                 const string MicrosoftAccountCredentialName = "Microsoft account";
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendCredentialAddedNotice(user, _authenticationService.DescribeCredential(cred));
+                await messageService.SendCredentialAddedNoticeAsync(user, _authenticationService.DescribeCredential(cred));
                 var message = messageService.MockMailSender.Sent.Last();
 
                 Assert.Equal(user.ToMailAddress(), message.To[0]);
@@ -967,13 +970,13 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void UsesTypeCaptionToDescribeCredentialIfNoProviderNounPresent()
+            public async Task UsesTypeCaptionToDescribeCredentialIfNoProviderNounPresent()
             {
                 var user = new User { EmailAddress = "legit@example.com", Username = "foo" };
                 var cred = new CredentialBuilder().CreatePasswordCredential("bogus");
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendCredentialAddedNotice(user, _authenticationService.DescribeCredential(cred));
+                await messageService.SendCredentialAddedNoticeAsync(user, _authenticationService.DescribeCredential(cred));
                 var message = messageService.MockMailSender.Sent.Last();
 
                 Assert.Equal(user.ToMailAddress(), message.To[0]);
@@ -983,7 +986,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void ApiKeyAddedMessageIsCorrect()
+            public async Task ApiKeyAddedMessageIsCorrect()
             {
                 var user = new User { EmailAddress = "legit@example.com", Username = "foo" };
                 var cred = TestCredentialHelper.CreateV2ApiKey(Guid.NewGuid(), TimeSpan.FromDays(1)).WithDefaultScopes();
@@ -991,7 +994,7 @@ namespace NuGetGallery
                 cred.User = user;
 
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendCredentialAddedNotice(user, _authenticationService.DescribeCredential(cred));
+                await messageService.SendCredentialAddedNoticeAsync(user, _authenticationService.DescribeCredential(cred));
                 var message = messageService.MockMailSender.Sent.Last();
 
                 Assert.Equal(user.ToMailAddress(), message.To[0]);
@@ -1011,7 +1014,7 @@ namespace NuGetGallery
             [InlineData("1.2.3+metadata")]
             [InlineData("1.2.3-alpha+metadata")]
             [InlineData("1.2.3-alpha.1+metadata")]
-            public void WillSendEmailToAllOwners(string version)
+            public async Task WillSendEmailToAllOwners(string version)
             {
                 // Arrange
                 var nugetVersion = new NuGetVersion(version);
@@ -1027,7 +1030,8 @@ namespace NuGetGallery
                 var package = new Package
                 {
                     Version = version,
-                    PackageRegistration = packageRegistration
+                    PackageRegistration = packageRegistration,
+                    User = new User("userThatPushed")
                 };
                 packageRegistration.Packages.Add(package);
 
@@ -1036,7 +1040,7 @@ namespace NuGetGallery
                 var packageUrl = $"https://localhost/packages/{packageRegistration.Id}/{nugetVersion.ToNormalizedString()}";
                 var supportUrl = $"https://localhost/packages/{packageRegistration.Id}/{nugetVersion.ToNormalizedString()}/ReportMyPackage";
                 var emailSettingsUrl = "https://localhost/account";
-                messageService.SendPackageAddedNotice(package, packageUrl, supportUrl, emailSettingsUrl);
+                await messageService.SendPackageAddedNoticeAsync(package, packageUrl, supportUrl, emailSettingsUrl);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1046,11 +1050,11 @@ namespace NuGetGallery
                 Assert.Equal(TestGalleryNoReplyAddress, message.From);
                 Assert.Contains($"[{TestGalleryOwner.DisplayName}] Package published - {packageRegistration.Id} {nugetVersion.ToNormalizedString()}", message.Subject);
                 Assert.Contains(
-                    $"The package [{packageRegistration.Id} {nugetVersion.ToFullString()}]({packageUrl}) was just published on {TestGalleryOwner.DisplayName}. If this was not intended, please [contact support]({supportUrl}).", message.Body);
+                    $"The package [{packageRegistration.Id} {nugetVersion.ToFullString()}]({packageUrl}) was recently published on {TestGalleryOwner.DisplayName} by {package.User.Username}. If this was not intended, please [contact support]({supportUrl}).", message.Body);
             }
 
             [Fact]
-            public void WillNotSendEmailToOwnerThatOptsOut()
+            public async Task WillNotSendEmailToOwnerThatOptsOut()
             {
                 // Arrange
                 var packageRegistration = new PackageRegistration
@@ -1065,23 +1069,24 @@ namespace NuGetGallery
                 var package = new Package
                 {
                     Version = "1.2.3",
-                    PackageRegistration = packageRegistration
+                    PackageRegistration = packageRegistration,
+                    User = new User("userThatPushed")
                 };
                 packageRegistration.Packages.Add(package);
 
                 // Act
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageAddedNotice(package, "http://dummy1", "http://dummy2", "http://dummy3");
+                await messageService.SendPackageAddedNoticeAsync(package, "http://dummy1", "http://dummy2", "http://dummy3");
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
 
                 Assert.Equal("yung@example.com", message.To[0].Address);
-                Assert.Equal(1, message.To.Count);
+                Assert.Single(message.To);
             }
 
             [Fact]
-            public void WillNotAttemptToSendIfNoOwnersAllow()
+            public async Task WillNotAttemptToSendIfNoOwnersAllow()
             {
                 // Arrange
                 var packageRegistration = new PackageRegistration
@@ -1096,13 +1101,14 @@ namespace NuGetGallery
                 var package = new Package
                 {
                     Version = "1.2.3",
-                    PackageRegistration = packageRegistration
+                    PackageRegistration = packageRegistration,
+                    User = new User("userThatPushed")
                 };
                 packageRegistration.Packages.Add(package);
 
                 // Act
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageAddedNotice(package, "http://dummy1", "http://dummy2", "http://dummy3");
+                await messageService.SendPackageAddedNoticeAsync(package, "http://dummy1", "http://dummy2", "http://dummy3");
 
                 // Assert
                 Assert.Empty(messageService.MockMailSender.Sent);
@@ -1112,62 +1118,42 @@ namespace NuGetGallery
         public class TheSendPackageValidationFailedNoticeMethod
             : TestContainer
         {
-            [Theory]
-            [InlineData("1.2.3")]
-            [InlineData("1.2.3-alpha")]
-            [InlineData("1.2.3-alpha.1")]
-            [InlineData("1.2.3+metadata")]
-            [InlineData("1.2.3-alpha+metadata")]
-            [InlineData("1.2.3-alpha.1+metadata")]
-            public void WillSendEmailToAllOwners(string version)
+            public static IEnumerable<object[]> WillSendEmailToAllOwners_Data
             {
-                // Arrange
-                var nugetVersion = new NuGetVersion(version);
-                var packageRegistration = new PackageRegistration
+                get
                 {
-                    Id = "smangit",
-                    Owners = new[]
+                    foreach (var user1PushAllowed in new[] { false, true })
                     {
-                        new User { EmailAddress = "yung@example.com", NotifyPackagePushed = true },
-                        new User { EmailAddress = "flynt@example.com", NotifyPackagePushed = true }
+                        foreach (var user2PushAllowed in new[] { false, true })
+                        {
+                            foreach (var user1EmailAllowed in new[] { false, true })
+                            {
+                                foreach (var user2EmailAllowed in new[] { false, true })
+                                {
+                                    foreach (var validationIssue in new[] {
+                                        ValidationIssue.AuthorAndRepositoryCounterSignaturesNotSupported,
+                                        ValidationIssue.AuthorCounterSignaturesNotSupported,
+                                        ValidationIssue.OnlyAuthorSignaturesSupported,
+                                        ValidationIssue.OnlySignatureFormatVersion1Supported,
+                                        ValidationIssue.PackageIsNotSigned,
+                                        ValidationIssue.PackageIsSigned,
+                                        ValidationIssue.PackageIsZip64,
+                                        ValidationIssue.Unknown,
+                                        new ClientSigningVerificationFailure("NU9999", "test message"),
+                                        new UnauthorizedCertificateFailure("asdfasdfasdf")})
+                                    {
+                                        yield return MemberDataHelper.AsData(validationIssue, user1PushAllowed, user2PushAllowed, user1EmailAllowed, user2EmailAllowed);
+                                    }
+                                }
+                            }
+                        }
                     }
-                };
-                var package = new Package
-                {
-                    Version = version,
-                    PackageRegistration = packageRegistration
-                };
-                packageRegistration.Packages.Add(package);
-
-                // Act
-                var messageService = TestableMessageService.Create(GetConfigurationService());
-                var packageUrl = $"https://localhost/packages/{packageRegistration.Id}/{nugetVersion.ToNormalizedString()}";
-                var supportUrl = $"https://localhost/packages/{packageRegistration.Id}/{nugetVersion.ToNormalizedString()}/ReportMyPackage";
-                messageService.SendPackageValidationFailedNotice(package, packageUrl, supportUrl);
-
-                // Assert
-                var message = messageService.MockMailSender.Sent.Last();
-
-                Assert.Equal("yung@example.com", message.To[0].Address);
-                Assert.Equal("flynt@example.com", message.To[1].Address);
-                Assert.Equal(TestGalleryNoReplyAddress, message.From);
-                Assert.Contains($"[{TestGalleryOwner.DisplayName}] Package validation failed - {packageRegistration.Id} {nugetVersion.ToNormalizedString()}", message.Subject);
-                Assert.Contains(
-                    $"The package [{packageRegistration.Id} {nugetVersion.ToFullString()}]({packageUrl}) failed validation and was therefore not published on {TestGalleryOwner.DisplayName}. " +
-                    $"Note that the package will not be available for consumption and you will not be able to push the same package ID and version until further action is taken. " +
-                    $"Please [contact support]({supportUrl}) for next steps.", message.Body);
+                }
             }
 
-            public static IEnumerable<object[]> EmailSettingsCombinations
-                => from u1pa in new[] { true, false }
-                   from u2pa in new[] { true, false }
-                   from u1ea in new[] { true, false }
-                   from u2ea in new[] { true, false }
-                   select new object[] { u1pa, u2pa, u1ea, u2ea };
-
             [Theory]
-            [MemberData(nameof(EmailSettingsCombinations))]
-            public void WillSendEmailToOwnersRegardlessOfSettings(bool user1PushAllowed, bool user2PushAllowed, bool user1EmailAllowed, bool user2EmailAllowed)
+            [MemberData(nameof(WillSendEmailToAllOwners_Data))]
+            public async Task WillSendEmailToAllOwners(ValidationIssue validationIssue, bool user1PushAllowed, bool user2PushAllowed, bool user1EmailAllowed, bool user2EmailAllowed)
             {
                 // Arrange
                 var packageRegistration = new PackageRegistration
@@ -1186,9 +1172,32 @@ namespace NuGetGallery
                 };
                 packageRegistration.Packages.Add(package);
 
+                var packageValidationSet = new PackageValidationSet()
+                {
+                    PackageValidations = new[] 
+                    {
+                        new PackageValidation()
+                        {
+                            PackageValidationIssues = new[] 
+                            {
+                                new PackageValidationIssue()
+                                {
+                                    Key = 0,
+                                    IssueCode = validationIssue.IssueCode,
+                                    Data = validationIssue.Serialize()
+                                }
+                            }
+                        }
+                    }
+                };
+
                 // Act
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageValidationFailedNotice(package, "http://dummy1", "http://dummy2");
+                var packageUrl = $"https://packageUrl";
+                var supportUrl = $"https://supportUrl";
+                var announcementsUrl = "https://announcementsUrl";
+                var twitterUrl = "https://twitterUrl";
+                await messageService.SendPackageValidationFailedNoticeAsync(package, packageValidationSet, packageUrl, supportUrl, announcementsUrl, twitterUrl);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1196,98 +1205,49 @@ namespace NuGetGallery
                 Assert.Equal("yung@example.com", message.To[0].Address);
                 Assert.Equal("flynt@example.com", message.To[1].Address);
                 Assert.Equal(2, message.To.Count);
-            }
-        }
-
-        public class TheSendSignedPackageNotAllowedNoticeMethod
-            : TestContainer
-        {
-            [Theory]
-            [InlineData("1.2.3")]
-            [InlineData("1.2.3-alpha")]
-            [InlineData("1.2.3-alpha.1")]
-            [InlineData("1.2.3+metadata")]
-            [InlineData("1.2.3-alpha+metadata")]
-            [InlineData("1.2.3-alpha.1+metadata")]
-            public void WillSendEmailToAllOwners(string version)
-            {
-                // Arrange
-                var nugetVersion = new NuGetVersion(version);
-                var packageRegistration = new PackageRegistration
-                {
-                    Id = "smangit",
-                    Owners = new[]
-                    {
-                        new User { EmailAddress = "yung@example.com", NotifyPackagePushed = true },
-                        new User { EmailAddress = "flynt@example.com", NotifyPackagePushed = true }
-                    }
-                };
-                var package = new Package
-                {
-                    Version = version,
-                    PackageRegistration = packageRegistration
-                };
-                packageRegistration.Packages.Add(package);
-
-                // Act
-                var messageService = TestableMessageService.Create(GetConfigurationService());
-                var packageUrl = $"https://localhost/packages/{packageRegistration.Id}/{nugetVersion.ToNormalizedString()}";
-                var supportUrl = $"https://localhost/packages/{packageRegistration.Id}/{nugetVersion.ToNormalizedString()}/ReportMyPackage";
-                var announcementsUrl = "https://example.com/announcements";
-                var twitterUrl = "https://example.com/twitter";
-                messageService.SendSignedPackageNotAllowedNotice(package, packageUrl, announcementsUrl, twitterUrl);
-
-                // Assert
-                var message = messageService.MockMailSender.Sent.Last();
-
-                Assert.Equal("yung@example.com", message.To[0].Address);
-                Assert.Equal("flynt@example.com", message.To[1].Address);
                 Assert.Equal(TestGalleryNoReplyAddress, message.From);
-                Assert.Contains($"[{TestGalleryOwner.DisplayName}] Package validation failed - {packageRegistration.Id} {nugetVersion.ToNormalizedString()}", message.Subject);
-                Assert.Contains(
-                    $"The package [{packageRegistration.Id} {nugetVersion.ToFullString()}]({packageUrl}) could not be published since it is signed. " +
-                    $"{TestGalleryOwner.DisplayName} does not accept signed packages at this moment. To be notified when {TestGalleryOwner.DisplayName} starts accepting signed packages, " +
-                    $"and more, watch our [Announcements]({announcementsUrl}) page or follow us on [Twitter]({twitterUrl}).", message.Body);
+                Assert.Contains($"[{TestGalleryOwner.DisplayName}] Package validation failed - {packageRegistration.Id} {package.Version}", message.Subject);
+                Assert.Contains($"The package [{package.PackageRegistration.Id} {package.Version}]({packageUrl}) failed validation because of the following reason(s):", message.Body);
+                Assert.Contains(ParseValidationIssue(validationIssue, announcementsUrl, twitterUrl), message.Body);
+                Assert.Contains($"Your package was not published on {TestGalleryOwner.DisplayName} and is not available for consumption.", message.Body);
+
+                if (validationIssue.IssueCode == ValidationIssueCode.Unknown)
+                {
+                    Assert.Contains($"Please [contact support]({supportUrl}) to help fix your package.", message.Body);
+                }
+                else
+                {
+                    Assert.Contains($"You can reupload your package once you've fixed the issue with it.", message.Body);
+                }
             }
 
-            public static IEnumerable<object[]> EmailSettingsCombinations
-                => from u1pa in new[] { true, false }
-                   from u2pa in new[] { true, false }
-                   from u1ea in new[] { true, false }
-                   from u2ea in new[] { true, false }
-                   select new object[] { u1pa, u2pa, u1ea, u2ea };
-
-            [Theory]
-            [MemberData(nameof(EmailSettingsCombinations))]
-            public void WillSendEmailToOwnersRegardlessOfSettings(bool user1PushAllowed, bool user2PushAllowed, bool user1EmailAllowed, bool user2EmailAllowed)
+            private static string ParseValidationIssue(ValidationIssue validationIssue, string announcementsUrl, string twitterUrl)
             {
-                // Arrange
-                var packageRegistration = new PackageRegistration
+                switch (validationIssue.IssueCode)
                 {
-                    Id = "smangit",
-                    Owners = new[]
-                    {
-                        new User { EmailAddress = "yung@example.com", NotifyPackagePushed = user1PushAllowed, EmailAllowed = user1EmailAllowed },
-                        new User { EmailAddress = "flynt@example.com", NotifyPackagePushed = user2PushAllowed, EmailAllowed = user2EmailAllowed }
-                    }
-                };
-                var package = new Package
-                {
-                    Version = "1.2.3",
-                    PackageRegistration = packageRegistration
-                };
-                packageRegistration.Packages.Add(package);
-
-                // Act
-                var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendSignedPackageNotAllowedNotice(package, "http://dummy1", "http://dummy2", "http://dummy3");
-
-                // Assert
-                var message = messageService.MockMailSender.Sent.Last();
-
-                Assert.Equal("yung@example.com", message.To[0].Address);
-                Assert.Equal("flynt@example.com", message.To[1].Address);
-                Assert.Equal(2, message.To.Count);
+                    case ValidationIssueCode.PackageIsSigned:
+                        return $"This package could not be published since it is signed. We do not accept signed packages at this moment. To be notified about package signing and more, watch our [Announcements]({announcementsUrl}) page or follow us on [Twitter]({twitterUrl}).";
+                    case ValidationIssueCode.ClientSigningVerificationFailure:
+                        var clientIssue = (ClientSigningVerificationFailure)validationIssue;
+                        return $"**{clientIssue.ClientCode}**: {clientIssue.ClientMessage}";
+                    case ValidationIssueCode.PackageIsZip64:
+                        return "Zip64 packages are not supported.";
+                    case ValidationIssueCode.OnlyAuthorSignaturesSupported:
+                        return "Signed packages must only have an author signature. Other signature types are not supported.";
+                    case ValidationIssueCode.AuthorAndRepositoryCounterSignaturesNotSupported:
+                        return "Author countersignatures and repository countersignatures are not supported.";
+                    case ValidationIssueCode.OnlySignatureFormatVersion1Supported:
+                        return "**NU3007:** Package signatures must have format version 1.";
+                    case ValidationIssueCode.AuthorCounterSignaturesNotSupported:
+                        return "Author countersignatures are not supported.";
+                    case ValidationIssueCode.PackageIsNotSigned:
+                        return "This package must be signed with a registered certificate. [Read more...](https://aka.ms/nuget-signed-ref)";
+                    case ValidationIssueCode.PackageIsSignedWithUnauthorizedCertificate:
+                        var certIssue = (UnauthorizedCertificateFailure)validationIssue;
+                        return $"The package was signed, but the signing certificate (SHA-1 thumbprint {certIssue.Sha1Thumbprint}) is not associated with your account. You must register this certificate to publish signed packages. [Read more...](https://aka.ms/nuget-signed-ref)";
+                    default:
+                        return "There was an unknown failure when validating your package.";
+                }
             }
         }
 
@@ -1301,7 +1261,7 @@ namespace NuGetGallery
             [InlineData("1.2.3+metadata")]
             [InlineData("1.2.3-alpha+metadata")]
             [InlineData("1.2.3-alpha.1+metadata")]
-            public void WillSendEmailToAllOwners(string version)
+            public async Task WillSendEmailToAllOwners(string version)
             {
                 // Arrange
                 var nugetVersion = new NuGetVersion(version);
@@ -1324,7 +1284,7 @@ namespace NuGetGallery
                 // Act
                 var messageService = TestableMessageService.Create(GetConfigurationService());
                 var packageUrl = $"https://localhost/packages/{packageRegistration.Id}/{nugetVersion.ToNormalizedString()}";
-                messageService.SendValidationTakingTooLongNotice(package, packageUrl);
+                await messageService.SendValidationTakingTooLongNoticeAsync(package, packageUrl);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1348,7 +1308,7 @@ namespace NuGetGallery
 
             [Theory]
             [MemberData(nameof(EmailSettingsCombinations))]
-            public void WillSendEmailToOwnersRegardlessOfSettings(bool user1PushAllowed, bool user2PushAllowed, bool user1EmailAllowed, bool user2EmailAllowed)
+            public async Task WillHonorPushSettings(bool user1PushAllowed, bool user2PushAllowed, bool user1EmailAllowed, bool user2EmailAllowed)
             {
                 // Arrange
                 var packageRegistration = new PackageRegistration
@@ -1360,6 +1320,9 @@ namespace NuGetGallery
                         new User { EmailAddress = "flynt@example.com", NotifyPackagePushed = user2PushAllowed, EmailAllowed = user2EmailAllowed }
                     }
                 };
+                var user1EmailShouldBeSent = user1PushAllowed;
+                var user2EmailShouldBeSent = user2PushAllowed;
+                int expectedNumberOfEmails = (user1EmailShouldBeSent ? 1 : 0) + (user2EmailShouldBeSent ? 1 : 0);
                 var package = new Package
                 {
                     Version = "1.2.3",
@@ -1369,123 +1332,27 @@ namespace NuGetGallery
 
                 // Act
                 var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendValidationTakingTooLongNotice(package, "http://dummy1");
+                await messageService.SendValidationTakingTooLongNoticeAsync(package, "http://dummy1");
 
                 // Assert
-                var message = messageService.MockMailSender.Sent.Last();
+                var message = messageService.MockMailSender.Sent.LastOrDefault();
 
-                Assert.Equal("yung@example.com", message.To[0].Address);
-                Assert.Equal("flynt@example.com", message.To[1].Address);
-                Assert.Equal(2, message.To.Count);
-            }
-        }
-
-        public class TheSendPackageUploadedNoticeMethod
-            : TestContainer
-        {
-            [Theory]
-            [InlineData("1.2.3")]
-            [InlineData("1.2.3-alpha")]
-            [InlineData("1.2.3-alpha.1")]
-            [InlineData("1.2.3+metadata")]
-            [InlineData("1.2.3-alpha+metadata")]
-            [InlineData("1.2.3-alpha.1+metadata")]
-            public void WillSendEmailToAllOwners(string version)
-            {
-                // Arrange
-                var nugetVersion = new NuGetVersion(version);
-                var packageRegistration = new PackageRegistration
+                if (expectedNumberOfEmails == 0)
                 {
-                    Id = "smangit",
-                    Owners = new[]
+                    Assert.Null(message);
+                }
+                else
+                {
+                    if (user1EmailShouldBeSent)
                     {
-                        new User { EmailAddress = "yung@example.com", NotifyPackagePushed = true },
-                        new User { EmailAddress = "flynt@example.com", NotifyPackagePushed = true }
+                        Assert.Contains("yung@example.com", message.To.Select(ma => ma.Address));
                     }
-                };
-                var package = new Package
-                {
-                    Version = version,
-                    PackageRegistration = packageRegistration
-                };
-                packageRegistration.Packages.Add(package);
-
-                // Act
-                var messageService = TestableMessageService.Create(GetConfigurationService());
-                var packageUrl = $"https://localhost/packages/{packageRegistration.Id}/{nugetVersion.ToNormalizedString()}";
-                var supportUrl = $"https://localhost/packages/{packageRegistration.Id}/{nugetVersion.ToNormalizedString()}/ReportMyPackage";
-                var emailSettingsUrl = "https://localhost/account";
-                messageService.SendPackageUploadedNotice(package, packageUrl, supportUrl, emailSettingsUrl);
-
-                // Assert
-                var message = messageService.MockMailSender.Sent.Last();
-
-                Assert.Equal("yung@example.com", message.To[0].Address);
-                Assert.Equal("flynt@example.com", message.To[1].Address);
-                Assert.Equal(TestGalleryNoReplyAddress, message.From);
-                Assert.Contains($"[{TestGalleryOwner.DisplayName}] Package uploaded - {packageRegistration.Id} {nugetVersion.ToNormalizedString()}", message.Subject);
-                Assert.DoesNotContain("publish", message.Subject);
-                Assert.Contains(
-                    $"The package [{packageRegistration.Id} {nugetVersion.ToFullString()}]({packageUrl}) was just uploaded to {TestGalleryOwner.DisplayName}. If this was not intended, please [contact support]({supportUrl}).", message.Body);
-            }
-
-            [Fact]
-            public void WillNotSendEmailToOwnerThatOptsOut()
-            {
-                // Arrange
-                var packageRegistration = new PackageRegistration
-                {
-                    Id = "smangit",
-                    Owners = new[]
+                    if (user2EmailShouldBeSent)
                     {
-                        new User { EmailAddress = "yung@example.com", NotifyPackagePushed = true },
-                        new User { EmailAddress = "flynt@example.com", NotifyPackagePushed = false }
+                        Assert.Contains("flynt@example.com", message.To.Select(ma => ma.Address));
                     }
-                };
-                var package = new Package
-                {
-                    Version = "1.2.3",
-                    PackageRegistration = packageRegistration
-                };
-                packageRegistration.Packages.Add(package);
-
-                // Act
-                var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageUploadedNotice(package, "http://dummy1", "http://dummy2", "http://dummy3");
-
-                // Assert
-                var message = messageService.MockMailSender.Sent.Last();
-
-                Assert.Equal("yung@example.com", message.To[0].Address);
-                Assert.Equal(1, message.To.Count);
-            }
-
-            [Fact]
-            public void WillNotAttemptToSendIfNoOwnersAllow()
-            {
-                // Arrange
-                var packageRegistration = new PackageRegistration
-                {
-                    Id = "smangit",
-                    Owners = new[]
-                    {
-                        new User { EmailAddress = "yung@example.com", EmailAllowed = false },
-                        new User { EmailAddress = "flynt@example.com", EmailAllowed = false }
-                    }
-                };
-                var package = new Package
-                {
-                    Version = "1.2.3",
-                    PackageRegistration = packageRegistration
-                };
-                packageRegistration.Packages.Add(package);
-
-                // Act
-                var messageService = TestableMessageService.Create(GetConfigurationService());
-                messageService.SendPackageUploadedNotice(package, "http://dummy1", "http://dummy2", "http://dummy3");
-
-                // Assert
-                Assert.Empty(messageService.MockMailSender.Sent);
+                    Assert.Equal(expectedNumberOfEmails, message.To.Count);
+                }
             }
         }
 
@@ -1493,7 +1360,7 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void WillSendEmailToAllOwners()
+            public async Task WillSendEmailToAllOwners()
             {
                 // Arrange
                 var nugetVersion = new NuGetVersion("3.1.0");
@@ -1518,7 +1385,7 @@ namespace NuGetGallery
                 var supportUrl = $"https://localhost/packages/{packageRegistration.Id}/{nugetVersion.ToNormalizedString()}/ReportMyPackage";
 
                 // Act
-                messageService.SendPackageDeletedNotice(package, packageUrl, supportUrl);
+                await messageService.SendPackageDeletedNoticeAsync(package, packageUrl, supportUrl);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1535,7 +1402,7 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void WillSendEmailIfEmailAllowed()
+            public async Task WillSendEmailIfEmailAllowed()
             {
                 // Arrange
                 var accountToTransform = new User("bumblebee") { EmailAddress = "bumblebee@transformers.com" };
@@ -1547,7 +1414,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationTransformRequest(accountToTransform, adminUser, profileUrl, confirmationUrl, rejectionUrl);
+                await messageService.SendOrganizationTransformRequestAsync(accountToTransform, adminUser, profileUrl, confirmationUrl, rejectionUrl);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1562,7 +1429,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void WillNotSendEmailIfEmailNotAllowed()
+            public async Task WillNotSendEmailIfEmailNotAllowed()
             {
                 // Arrange
                 var accountToTransform = new User("bumblebee") { EmailAddress = "bumblebee@transformers.com" };
@@ -1574,7 +1441,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationTransformRequest(accountToTransform, adminUser, profileUrl, confirmationUrl, rejectionUrl);
+                await messageService.SendOrganizationTransformRequestAsync(accountToTransform, adminUser, profileUrl, confirmationUrl, rejectionUrl);
 
                 // Assert
                 Assert.Empty(messageService.MockMailSender.Sent);
@@ -1585,7 +1452,7 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void WillSendEmailIfEmailAllowed()
+            public async Task WillSendEmailIfEmailAllowed()
             {
                 // Arrange
                 var accountToTransform = new User("bumblebee") { EmailAddress = "bumblebee@transformers.com", EmailAllowed = true };
@@ -1595,7 +1462,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationTransformInitiatedNotice(accountToTransform, adminUser, cancelUrl);
+                await messageService.SendOrganizationTransformInitiatedNoticeAsync(accountToTransform, adminUser, cancelUrl);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1610,7 +1477,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void WillNotSendEmailIfEmailNotAllowed()
+            public async Task WillNotSendEmailIfEmailNotAllowed()
             {
                 // Arrange
                 var accountToTransform = new User("bumblebee") { EmailAddress = "bumblebee@transformers.com", EmailAllowed = false };
@@ -1620,7 +1487,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationTransformInitiatedNotice(accountToTransform, adminUser, cancelUrl);
+                await messageService.SendOrganizationTransformInitiatedNoticeAsync(accountToTransform, adminUser, cancelUrl);
 
                 // Assert
                 Assert.Empty(messageService.MockMailSender.Sent);
@@ -1631,7 +1498,7 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void WillSendEmailIfEmailAllowed()
+            public async Task WillSendEmailIfEmailAllowed()
             {
                 // Arrange
                 var accountToTransform = new User("bumblebee") { EmailAddress = "bumblebee@transformers.com", EmailAllowed = true };
@@ -1640,7 +1507,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationTransformRequestAcceptedNotice(accountToTransform, adminUser);
+                await messageService.SendOrganizationTransformRequestAcceptedNoticeAsync(accountToTransform, adminUser);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1653,7 +1520,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void WillNotSendEmailIfEmailNotAllowed()
+            public async Task WillNotSendEmailIfEmailNotAllowed()
             {
                 // Arrange
                 var accountToTransform = new User("bumblebee") { EmailAddress = "bumblebee@transformers.com", EmailAllowed = false };
@@ -1662,7 +1529,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationTransformRequestAcceptedNotice(accountToTransform, adminUser);
+                await messageService.SendOrganizationTransformRequestAcceptedNoticeAsync(accountToTransform, adminUser);
 
                 // Assert
                 Assert.Empty(messageService.MockMailSender.Sent);
@@ -1673,7 +1540,7 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void WillSendEmailIfEmailAllowed()
+            public async Task WillSendEmailIfEmailAllowed()
             {
                 // Arrange
                 var accountToTransform = new User("bumblebee") { EmailAddress = "bumblebee@transformers.com", EmailAllowed = true };
@@ -1682,7 +1549,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationTransformRequestRejectedNotice(accountToTransform, adminUser);
+                await messageService.SendOrganizationTransformRequestRejectedNoticeAsync(accountToTransform, adminUser);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1695,7 +1562,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void WillNotSendEmailIfEmailNotAllowed()
+            public async Task WillNotSendEmailIfEmailNotAllowed()
             {
                 // Arrange
                 var accountToTransform = new User("bumblebee") { EmailAddress = "bumblebee@transformers.com", EmailAllowed = false };
@@ -1704,7 +1571,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationTransformRequestRejectedNotice(accountToTransform, adminUser);
+                await messageService.SendOrganizationTransformRequestRejectedNoticeAsync(accountToTransform, adminUser);
 
                 // Assert
                 Assert.Empty(messageService.MockMailSender.Sent);
@@ -1715,7 +1582,7 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void WillSendEmailIfEmailAllowed()
+            public async Task WillSendEmailIfEmailAllowed()
             {
                 // Arrange
                 var accountToTransform = new User("bumblebee") { EmailAddress = "bumblebee@transformers.com" };
@@ -1724,7 +1591,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationTransformRequestCancelledNotice(accountToTransform, adminUser);
+                await messageService.SendOrganizationTransformRequestCancelledNoticeAsync(accountToTransform, adminUser);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1737,7 +1604,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void WillNotSendEmailIfEmailNotAllowed()
+            public async Task WillNotSendEmailIfEmailNotAllowed()
             {
                 // Arrange
                 var accountToTransform = new User("bumblebee") { EmailAddress = "bumblebee@transformers.com" };
@@ -1746,7 +1613,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationTransformRequestCancelledNotice(accountToTransform, adminUser);
+                await messageService.SendOrganizationTransformRequestCancelledNoticeAsync(accountToTransform, adminUser);
 
                 // Assert
                 Assert.Empty(messageService.MockMailSender.Sent);
@@ -1759,7 +1626,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void WillSendEmailIfEmailAllowed(bool isAdmin)
+            public async Task WillSendEmailIfEmailAllowed(bool isAdmin)
             {
                 // Arrange
                 var organization = new Organization("transformers") { EmailAddress = "transformers@transformers.com" };
@@ -1772,7 +1639,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationMembershipRequest(organization, newUser, adminUser, isAdmin, profileUrl, confirmationUrl, rejectionUrl);
+                await messageService.SendOrganizationMembershipRequestAsync(organization, newUser, adminUser, isAdmin, profileUrl, confirmationUrl, rejectionUrl);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1791,7 +1658,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void WillNotSendEmailIfEmailNotAllowed(bool isAdmin)
+            public async Task WillNotSendEmailIfEmailNotAllowed(bool isAdmin)
             {
                 // Arrange
                 var organization = new Organization("transformers") { EmailAddress = "transformers@transformers.com" };
@@ -1804,7 +1671,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationMembershipRequest(organization, newUser, adminUser, isAdmin, profileUrl, confirmationUrl, rejectionUrl);
+                await messageService.SendOrganizationMembershipRequestAsync(organization, newUser, adminUser, isAdmin, profileUrl, confirmationUrl, rejectionUrl);
 
                 // Assert
                 Assert.Empty(messageService.MockMailSender.Sent);
@@ -1817,7 +1684,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void WillSendEmailIfEmailAllowed(bool isAdmin)
+            public async Task WillSendEmailIfEmailAllowed(bool isAdmin)
             {
                 // Arrange
                 var organization = GetOrganizationWithRecipients();
@@ -1828,7 +1695,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationMembershipRequestInitiatedNotice(organization, requestingUser, pendingUser, isAdmin, cancelUrl);
+                await messageService.SendOrganizationMembershipRequestInitiatedNoticeAsync(organization, requestingUser, pendingUser, isAdmin, cancelUrl);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1844,7 +1711,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void WillNotSendEmailIfEmailNotAllowed(bool isAdmin)
+            public async Task WillNotSendEmailIfEmailNotAllowed(bool isAdmin)
             {
                 // Arrange
                 var organization = GetOrganizationWithoutRecipients();
@@ -1855,7 +1722,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationMembershipRequestInitiatedNotice(organization, requestingUser, pendingUser, isAdmin, cancelUrl);
+                await messageService.SendOrganizationMembershipRequestInitiatedNoticeAsync(organization, requestingUser, pendingUser, isAdmin, cancelUrl);
 
                 // Assert
                 Assert.Empty(messageService.MockMailSender.Sent);
@@ -1866,7 +1733,7 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void WillSendEmailIfEmailAllowed()
+            public async Task WillSendEmailIfEmailAllowed()
             {
                 // Arrange
                 var organization = GetOrganizationWithRecipients();
@@ -1875,7 +1742,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationMembershipRequestRejectedNotice(organization, pendingUser);
+                await messageService.SendOrganizationMembershipRequestRejectedNoticeAsync(organization, pendingUser);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1889,7 +1756,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void WillNotSendEmailIfEmailNotAllowed()
+            public async Task WillNotSendEmailIfEmailNotAllowed()
             {
                 // Arrange
                 var organization = GetOrganizationWithoutRecipients();
@@ -1898,7 +1765,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationMembershipRequestRejectedNotice(organization, pendingUser);
+                await messageService.SendOrganizationMembershipRequestRejectedNoticeAsync(organization, pendingUser);
 
                 // Assert
                 Assert.Empty(messageService.MockMailSender.Sent);
@@ -1909,7 +1776,7 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void WillSendEmailIfEmailAllowed()
+            public async Task WillSendEmailIfEmailAllowed()
             {
                 // Arrange
                 var organization = new Organization("transformers") { EmailAddress = "transformers@transformers.com" };
@@ -1918,7 +1785,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationMembershipRequestCancelledNotice(organization, pendingUser);
+                await messageService.SendOrganizationMembershipRequestCancelledNoticeAsync(organization, pendingUser);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1931,7 +1798,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void WillNotSendEmailIfEmailNotAllowed()
+            public async Task WillNotSendEmailIfEmailNotAllowed()
             {
                 // Arrange
                 var accountToTransform = new Organization("transformers") { EmailAddress = "transformers@transformers.com" };
@@ -1940,7 +1807,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationMembershipRequestCancelledNotice(accountToTransform, pendingUser);
+                await messageService.SendOrganizationMembershipRequestCancelledNoticeAsync(accountToTransform, pendingUser);
 
                 // Assert
                 Assert.Empty(messageService.MockMailSender.Sent);
@@ -1953,7 +1820,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void WillSendEmailIfEmailAllowed(bool isAdmin)
+            public async Task WillSendEmailIfEmailAllowed(bool isAdmin)
             {
                 // Arrange
                 var organization = new Organization("transformers") { EmailAddress = "transformers@transformers.com", EmailAllowed = true };
@@ -1963,7 +1830,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationMemberUpdatedNotice(organization, membership);
+                await messageService.SendOrganizationMemberUpdatedNoticeAsync(organization, membership);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -1979,7 +1846,7 @@ namespace NuGetGallery
             [Theory]
             [InlineData(false)]
             [InlineData(true)]
-            public void WillNotSendEmailIfEmailNotAllowed(bool isAdmin)
+            public async Task WillNotSendEmailIfEmailNotAllowed(bool isAdmin)
             {
                 // Arrange
                 var organization = new Organization("transformers") { EmailAddress = "transformers@transformers.com", EmailAllowed = false };
@@ -1989,7 +1856,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationMemberUpdatedNotice(organization, membership);
+                await messageService.SendOrganizationMemberUpdatedNoticeAsync(organization, membership);
 
                 // Assert
                 Assert.Empty(messageService.MockMailSender.Sent);
@@ -2000,7 +1867,7 @@ namespace NuGetGallery
             : TestContainer
         {
             [Fact]
-            public void WillSendEmailIfEmailAllowed()
+            public async Task WillSendEmailIfEmailAllowed()
             {
                 // Arrange
                 var organization = new Organization("transformers") { EmailAddress = "transformers@transformers.com", EmailAllowed = true };
@@ -2009,7 +1876,7 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationMemberRemovedNotice(organization, removedUser);
+                await messageService.SendOrganizationMemberRemovedNoticeAsync(organization, removedUser);
 
                 // Assert
                 var message = messageService.MockMailSender.Sent.Last();
@@ -2022,7 +1889,7 @@ namespace NuGetGallery
             }
 
             [Fact]
-            public void WillNotSendEmailIfEmailNotAllowed()
+            public async Task WillNotSendEmailIfEmailNotAllowed()
             {
                 // Arrange
                 var organization = new Organization("transformers") { EmailAddress = "transformers@transformers.com", EmailAllowed = false };
@@ -2031,10 +1898,36 @@ namespace NuGetGallery
                 var messageService = TestableMessageService.Create(GetConfigurationService());
 
                 // Act
-                messageService.SendOrganizationMemberRemovedNotice(organization, member);
+                await messageService.SendOrganizationMemberRemovedNoticeAsync(organization, member);
 
                 // Assert
                 Assert.Empty(messageService.MockMailSender.Sent);
+            }
+        }
+
+        public class TheSendAccountDeleteNoticeMethod
+            : TestContainer
+        {
+            [Fact]
+            public async Task VerifyTheMessageBody()
+            {
+                // Arrange
+                var userName = "deleteduser";
+                var userEmailAddress = "onedeleteduser@hotmail.com";
+                var userToDelete = new User(userName) { EmailAddress = userEmailAddress };
+
+                var messageService = TestableMessageService.Create(GetConfigurationService());
+
+                // Act
+                await messageService.SendAccountDeleteNoticeAsync(userToDelete);
+
+                // Assert
+                var message = messageService.MockMailSender.Sent.Last();
+
+                Assert.Equal(userToDelete.EmailAddress, message.To[0].Address);
+                Assert.Equal(TestGalleryNoReplyAddress, message.From);
+                Assert.Equal("Account Deletion Request", message.Subject);
+                Assert.Contains($"We received a request to delete your account {userName}.", message.Body);
             }
         }
 
@@ -2113,12 +2006,12 @@ namespace NuGetGallery
             : MessageService
         {
             private TestableMessageService(IGalleryConfigurationService configurationService)
+                : base(new TestMailSender(), configurationService.Current, new Mock<ITelemetryService>().Object)
             {
                 configurationService.Current.GalleryOwner = TestGalleryOwner;
                 configurationService.Current.GalleryNoReplyAddress = TestGalleryNoReplyAddress;
 
-                Config = configurationService.Current;
-                MailSender = MockMailSender = new TestMailSender();
+                MockMailSender = (TestMailSender)MailSender;
             }
 
             public Mock<AuthenticationService> MockAuthService { get; protected set; }
@@ -2126,10 +2019,331 @@ namespace NuGetGallery
 
             public static TestableMessageService Create(IGalleryConfigurationService configurationService)
             {
+                configurationService.Current.SmtpUri = new Uri("smtp://fake.mail.server");
                 return new TestableMessageService(configurationService);
             }
         }
 
+        public class TheSendValidationTakingTooLongNoticeMethodForSymbols
+            : TestContainer
+        {
+            [Theory]
+            [InlineData("1.2.3")]
+            [InlineData("1.2.3-alpha")]
+            [InlineData("1.2.3-alpha.1")]
+            [InlineData("1.2.3+metadata")]
+            [InlineData("1.2.3-alpha+metadata")]
+            [InlineData("1.2.3-alpha.1+metadata")]
+            public async Task WillSendEmailToAllOwners(string version)
+            {
+                // Arrange
+                var nugetVersion = new NuGetVersion(version);
+                var packageRegistration = new PackageRegistration
+                {
+                    Id = "smangit",
+                    Owners = new[]
+                    {
+                        new User { EmailAddress = "yung@example.com", NotifyPackagePushed = true },
+                        new User { EmailAddress = "flynt@example.com", NotifyPackagePushed = true }
+                    }
+                };
+                var package = new Package
+                {
+                    Version = version,
+                    PackageRegistration = packageRegistration
+                };
+                packageRegistration.Packages.Add(package);
+
+                var symbolPackage = new SymbolPackage()
+                {
+                    Package = package,
+                    Key = 12
+                };
+
+                // Act
+                var messageService = TestableMessageService.Create(GetConfigurationService());
+                var packageUrl = $"https://localhost/packages/{packageRegistration.Id}/{nugetVersion.ToNormalizedString()}";
+                await messageService.SendValidationTakingTooLongNoticeAsync(symbolPackage, packageUrl);
+
+                // Assert
+                var message = messageService.MockMailSender.Sent.Last();
+
+                Assert.Equal("yung@example.com", message.To[0].Address);
+                Assert.Equal("flynt@example.com", message.To[1].Address);
+                Assert.Equal(TestGalleryNoReplyAddress, message.From);
+                Assert.Contains($"[{TestGalleryOwner.DisplayName}] Symbol package validation taking longer than expected - {packageRegistration.Id} {nugetVersion.ToNormalizedString()}", message.Subject);
+                Assert.Contains(
+                    $"It is taking longer than expected for your symbol package [{packageRegistration.Id} {nugetVersion.ToFullString()}]({packageUrl}) to get published.\n\n" +
+                    $"We are looking into it and there is no action on you at this time. We’ll send you an email notification when your symbol package has been published.\n\n" +
+                    $"Thank you for your patience.", message.Body);
+            }
+        }
+
+        public class TheSendSymbolPackageValidationFailedNoticeMethod
+            : TestContainer
+        {
+            public static IEnumerable<object[]> WillSendEmailToAllOwners_Data
+            {
+                get
+                {
+                    foreach (var user1PushAllowed in new[] { false, true })
+                    {
+                        foreach (var user2PushAllowed in new[] { false, true })
+                        {
+                            foreach (var user1EmailAllowed in new[] { false, true })
+                            {
+                                foreach (var user2EmailAllowed in new[] { false, true })
+                                {
+                                    foreach (var validationIssue in new[] {
+                                        ValidationIssue.SymbolErrorCode_ChecksumDoesNotMatch,
+                                        ValidationIssue.SymbolErrorCode_MatchingPortablePDBNotFound,
+                                        ValidationIssue.Unknown
+                                       })
+                                    {
+                                        yield return MemberDataHelper.AsData(validationIssue, user1PushAllowed, user2PushAllowed, user1EmailAllowed, user2EmailAllowed);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            [Theory]
+            [MemberData(nameof(WillSendEmailToAllOwners_Data))]
+            public async Task WillSendEmailToAllOwners(ValidationIssue validationIssue, bool user1PushAllowed, bool user2PushAllowed, bool user1EmailAllowed, bool user2EmailAllowed)
+            {
+                // Arrange
+                var packageRegistration = new PackageRegistration
+                {
+                    Id = "smangit",
+                    Owners = new[]
+                    {
+                        new User { EmailAddress = "yung@example.com", NotifyPackagePushed = user1PushAllowed, EmailAllowed = user1EmailAllowed },
+                        new User { EmailAddress = "flynt@example.com", NotifyPackagePushed = user2PushAllowed, EmailAllowed = user2EmailAllowed }
+                    }
+                };
+                var package = new Package
+                {
+                    Version = "1.2.3",
+                    PackageRegistration = packageRegistration
+                };
+                packageRegistration.Packages.Add(package);
+
+                var symbolPackage = new SymbolPackage()
+                {
+                    Package = package,
+                    Key = 12
+                };
+
+                var packageValidationSet = new PackageValidationSet()
+                {
+                    PackageValidations = new[]
+                    {
+                        new PackageValidation()
+                        {
+                            PackageValidationIssues = new[]
+                            {
+                                new PackageValidationIssue()
+                                {
+                                    Key = 0,
+                                    IssueCode = validationIssue.IssueCode,
+                                    Data = validationIssue.Serialize()
+                                }
+                            }
+                        }
+                    }
+                };
+
+                // Act
+                var messageService = TestableMessageService.Create(GetConfigurationService());
+                var packageUrl = $"https://packageUrl";
+                var supportUrl = $"https://supportUrl";
+                var announcementsUrl = "https://announcementsUrl";
+                var twitterUrl = "https://twitterUrl";
+                await messageService.SendSymbolPackageValidationFailedNoticeAsync(symbolPackage, packageValidationSet, packageUrl, supportUrl, announcementsUrl, twitterUrl);
+
+                // Assert
+                var message = messageService.MockMailSender.Sent.Last();
+
+                Assert.Equal("yung@example.com", message.To[0].Address);
+                Assert.Equal("flynt@example.com", message.To[1].Address);
+                Assert.Equal(2, message.To.Count);
+                Assert.Equal(TestGalleryNoReplyAddress, message.From);
+                Assert.Contains($"[{TestGalleryOwner.DisplayName}] Symbol package validation failed - {packageRegistration.Id} {package.Version}", message.Subject);
+                Assert.Contains($"The symbol package [{package.PackageRegistration.Id} {package.Version}]({packageUrl}) failed validation because of the following reason(s):", message.Body);
+                Assert.Contains(ParseValidationIssue(validationIssue, announcementsUrl, twitterUrl), message.Body);
+                Assert.Contains($"Your symbol package was not published on {TestGalleryOwner.DisplayName} and is not available for consumption.", message.Body);
+
+                if (validationIssue.IssueCode == ValidationIssueCode.Unknown)
+                {
+                    Assert.Contains($"Please [contact support]({supportUrl}) to help.", message.Body);
+                }
+                else
+                {
+                    Assert.Contains($"You can reupload your symbol package once you've fixed the issue with it.", message.Body);
+                }
+            }
+
+            private static string ParseValidationIssue(ValidationIssue validationIssue, string announcementsUrl, string twitterUrl)
+            {
+                switch (validationIssue.IssueCode)
+                {
+                    case ValidationIssueCode.PackageIsSigned:
+                        return $"This package could not be published since it is signed. We do not accept signed packages at this moment. To be notified about package signing and more, watch our [Announcements]({announcementsUrl}) page or follow us on [Twitter]({twitterUrl}).";
+                    case ValidationIssueCode.ClientSigningVerificationFailure:
+                        var clientIssue = (ClientSigningVerificationFailure)validationIssue;
+                        return $"**{clientIssue.ClientCode}**: {clientIssue.ClientMessage}";
+                    case ValidationIssueCode.PackageIsZip64:
+                        return "Zip64 packages are not supported.";
+                    case ValidationIssueCode.OnlyAuthorSignaturesSupported:
+                        return "Signed packages must only have an author signature. Other signature types are not supported.";
+                    case ValidationIssueCode.AuthorAndRepositoryCounterSignaturesNotSupported:
+                        return "Author countersignatures and repository countersignatures are not supported.";
+                    case ValidationIssueCode.OnlySignatureFormatVersion1Supported:
+                        return "**NU3007:** Package signatures must have format version 1.";
+                    case ValidationIssueCode.AuthorCounterSignaturesNotSupported:
+                        return "Author countersignatures are not supported.";
+                    case ValidationIssueCode.PackageIsNotSigned:
+                        return "This package must be signed with a registered certificate. [Read more...](https://aka.ms/nuget-signed-ref)";
+                    case ValidationIssueCode.PackageIsSignedWithUnauthorizedCertificate:
+                        var certIssue = (UnauthorizedCertificateFailure)validationIssue;
+                        return $"The package was signed, but the signing certificate (SHA-1 thumbprint {certIssue.Sha1Thumbprint}) is not associated with your account. You must register this certificate to publish signed packages. [Read more...](https://aka.ms/nuget-signed-ref)";
+                    case ValidationIssueCode.SymbolErrorCode_ChecksumDoesNotMatch:
+                        return "The checksum does not match for the dll(s) and corresponding pdb(s).";
+                    case ValidationIssueCode.SymbolErrorCode_MatchingPortablePDBNotFound:
+                        return "The uploaded symbols package contains pdb(s) for a corresponding dll(s) not found in the nuget package.";
+                    default:
+                        return "There was an unknown failure when validating your package.";
+                }
+            }
+        }
+
+        public class TheSendSymbolPackageAddedNoticeMethod
+            : TestContainer
+        {
+            [Theory]
+            [InlineData("1.2.3")]
+            [InlineData("1.2.3-alpha")]
+            [InlineData("1.2.3-alpha.1")]
+            [InlineData("1.2.3+metadata")]
+            [InlineData("1.2.3-alpha+metadata")]
+            [InlineData("1.2.3-alpha.1+metadata")]
+            public async Task WillSendEmailToAllOwners(string version)
+            {
+                // Arrange
+                var nugetVersion = new NuGetVersion(version);
+                var packageRegistration = new PackageRegistration
+                {
+                    Id = "smangit",
+                    Owners = new[]
+                    {
+                        new User { EmailAddress = "yung@example.com", NotifyPackagePushed = true },
+                        new User { EmailAddress = "flynt@example.com", NotifyPackagePushed = true }
+                    }
+                };
+                var package = new Package
+                {
+                    Version = version,
+                    PackageRegistration = packageRegistration,
+                    User = new User("userThatPushed")
+                };
+                packageRegistration.Packages.Add(package);
+                var symbolPackage = new SymbolPackage()
+                {
+                    Package = package,
+                    Key = 12
+                };
+
+                // Act
+                var messageService = TestableMessageService.Create(GetConfigurationService());
+                var packageUrl = $"https://localhost/packages/{packageRegistration.Id}/{nugetVersion.ToNormalizedString()}";
+                var supportUrl = $"https://localhost/packages/{packageRegistration.Id}/{nugetVersion.ToNormalizedString()}/ReportMyPackage";
+                var emailSettingsUrl = "https://localhost/account";
+                await messageService.SendSymbolPackageAddedNoticeAsync(symbolPackage, packageUrl, supportUrl, emailSettingsUrl);
+
+                // Assert
+                var message = messageService.MockMailSender.Sent.Last();
+
+                Assert.Equal("yung@example.com", message.To[0].Address);
+                Assert.Equal("flynt@example.com", message.To[1].Address);
+                Assert.Equal(TestGalleryNoReplyAddress, message.From);
+                Assert.Contains($"[{TestGalleryOwner.DisplayName}] Symbol package published - {packageRegistration.Id} {nugetVersion.ToNormalizedString()}", message.Subject);
+                Assert.Contains(
+                    $"The symbol package [{packageRegistration.Id} {nugetVersion.ToFullString()}]({packageUrl}) was recently published on {TestGalleryOwner.DisplayName} by {package.User.Username}. If this was not intended, please [contact support]({supportUrl}).", message.Body);
+            }
+
+            [Fact]
+            public async Task WillNotSendEmailToOwnerThatOptsOut()
+            {
+                // Arrange
+                var packageRegistration = new PackageRegistration
+                {
+                    Id = "smangit",
+                    Owners = new[]
+                    {
+                        new User { EmailAddress = "yung@example.com", NotifyPackagePushed = true },
+                        new User { EmailAddress = "flynt@example.com", NotifyPackagePushed = false }
+                    }
+                };
+                var package = new Package
+                {
+                    Version = "1.2.3",
+                    PackageRegistration = packageRegistration,
+                    User = new User("userThatPushed")
+                };
+                packageRegistration.Packages.Add(package);
+                var symbolPackage = new SymbolPackage()
+                {
+                    Package = package,
+                    Key = 12
+                };
+
+                // Act
+                var messageService = TestableMessageService.Create(GetConfigurationService());
+                await messageService.SendSymbolPackageAddedNoticeAsync(symbolPackage, "http://dummy1", "http://dummy2", "http://dummy3");
+
+                // Assert
+                var message = messageService.MockMailSender.Sent.Last();
+
+                Assert.Equal("yung@example.com", message.To[0].Address);
+                Assert.Single(message.To);
+            }
+
+            [Fact]
+            public async Task WillNotAttemptToSendIfNoOwnersAllow()
+            {
+                // Arrange
+                var packageRegistration = new PackageRegistration
+                {
+                    Id = "smangit",
+                    Owners = new[]
+                    {
+                        new User { EmailAddress = "yung@example.com", EmailAllowed = false },
+                        new User { EmailAddress = "flynt@example.com", EmailAllowed = false }
+                    }
+                };
+                var package = new Package
+                {
+                    Version = "1.2.3",
+                    PackageRegistration = packageRegistration,
+                    User = new User("userThatPushed")
+                };
+                packageRegistration.Packages.Add(package);
+                var symbolPackage = new SymbolPackage()
+                {
+                    Package = package,
+                    Key = 12
+                };
+
+                // Act
+                var messageService = TestableMessageService.Create(GetConfigurationService());
+                await messageService.SendSymbolPackageAddedNoticeAsync(symbolPackage, "http://dummy1", "http://dummy2", "http://dummy3");
+
+                // Assert
+                Assert.Empty(messageService.MockMailSender.Sent);
+            }
+        }
         // Normally I don't like hand-written mocks, but this actually seems appropriate - anurse
         public class TestMailSender : IMailSender
         {

@@ -16,27 +16,41 @@ namespace NuGetGallery
     {
         private readonly IAppConfiguration _appConfiguration;
         private readonly IPackageService _packageService;
-        private readonly IPackageValidationInitiator _initiator;
+        private readonly ISymbolPackageService _symbolPackageService;
+        private readonly IPackageValidationInitiator<Package> _packageValidationInitiator;
+        private readonly IPackageValidationInitiator<SymbolPackage> _symbolPackageValidationInitiator;
         private readonly IEntityRepository<PackageValidationSet> _validationSets;
         private readonly ITelemetryService _telemetryService;
 
         public ValidationService(
             IAppConfiguration appConfiguration,
             IPackageService packageService,
-            IPackageValidationInitiator initiator,
-            IEntityRepository<PackageValidationSet> validationSets,
-            ITelemetryService telemetryService)
+            IPackageValidationInitiator<Package> packageValidationInitiator,
+            IPackageValidationInitiator<SymbolPackage> symbolPackageValidationInitiator,
+            ITelemetryService telemetryService,
+            ISymbolPackageService symbolPackageService,
+            IEntityRepository<PackageValidationSet> validationSets = null)
         {
             _appConfiguration = appConfiguration ?? throw new ArgumentNullException(nameof(appConfiguration));
             _packageService = packageService ?? throw new ArgumentNullException(nameof(packageService));
-            _initiator = initiator ?? throw new ArgumentNullException(nameof(initiator));
-            _validationSets = validationSets ?? throw new ArgumentNullException(nameof(validationSets));
+            _packageValidationInitiator = packageValidationInitiator ?? throw new ArgumentNullException(nameof(packageValidationInitiator));
+            _symbolPackageValidationInitiator = symbolPackageValidationInitiator ?? throw new ArgumentNullException(nameof(symbolPackageValidationInitiator));
             _telemetryService = telemetryService ?? throw new ArgumentNullException(nameof(telemetryService));
+            _symbolPackageService = symbolPackageService ?? throw new ArgumentNullException(nameof(symbolPackageService));
+
+            _validationSets = validationSets;
+
+            // Validation database should not be accessed when async validation is disabled. Features
+            // which depend on the database should be behind this feature flag.
+            if (_appConfiguration.AsynchronousPackageValidationEnabled && _validationSets == null)
+            {
+                throw new ArgumentNullException(nameof(validationSets));
+            }
         }
 
         public async Task StartValidationAsync(Package package)
         {
-            var packageStatus = await _initiator.StartValidationAsync(package);
+            var packageStatus = await _packageValidationInitiator.StartValidationAsync(package);
 
             await _packageService.UpdatePackageStatusAsync(
                 package,
@@ -46,7 +60,7 @@ namespace NuGetGallery
 
         public async Task RevalidateAsync(Package package)
         {
-            await _initiator.StartValidationAsync(package);
+            await _packageValidationInitiator.StartValidationAsync(package);
 
             _telemetryService.TrackPackageRevalidate(package);
         }
@@ -61,50 +75,54 @@ namespace NuGetGallery
             return false;
         }
 
-        public IReadOnlyList<ValidationIssue> GetLatestValidationIssues(Package package)
+        public IReadOnlyList<ValidationIssue> GetLatestPackageValidationIssues(Package package)
         {
-            var issues = Enumerable.Empty<ValidationIssue>();
+            return GetValidationIssues(package.Key, package.PackageStatusKey, ValidatingType.Package);
+        }
+
+        public IReadOnlyList<ValidationIssue> GetLatestPackageValidationIssues(SymbolPackage symbolPackage)
+        {
+            if (symbolPackage == null)
+            {
+                return new List<ValidationIssue>();
+            }
+
+            return GetValidationIssues(symbolPackage.Key, symbolPackage.StatusKey, ValidatingType.SymbolPackage);
+        }
+
+        private IReadOnlyList<ValidationIssue> GetValidationIssues(int entityKey, PackageStatus status, ValidatingType validatingType)
+        {
+            IReadOnlyList<ValidationIssue> issues = new ValidationIssue[0];
 
             // Only query the database for validation issues if the package has failed validation.
-            if (package.PackageStatusKey == PackageStatus.FailedValidation)
+            if (status == PackageStatus.FailedValidation)
             {
                 // Grab the most recently completed validation set for this package. Note that the orchestrator will stop
                 // processing a validation set if all validation succeed, OR, one or more validation fails.
-                var validationSet = _validationSets
-                                        .GetAll()
-                                        .Where(s => s.PackageKey == package.Key)
-                                        .Where(s => s.PackageValidations.All(v => v.ValidationStatus == ValidationStatus.Succeeded) ||
-                                                    s.PackageValidations.Any(v => v.ValidationStatus == ValidationStatus.Failed))
-                                        .Include(s => s.PackageValidations.Select(v => v.PackageValidationIssues))
-                                        .OrderByDescending(s => s.Updated)
-                                        .FirstOrDefault();
+                var validationSet = _validationSets?
+                    .GetAll()
+                    .Where(s => s.PackageKey == entityKey && s.ValidatingType == validatingType)
+                    .Where(s => s.PackageValidations.All(v => v.ValidationStatus == ValidationStatus.Succeeded) ||
+                                s.PackageValidations.Any(v => v.ValidationStatus == ValidationStatus.Failed))
+                    .Include(s => s.PackageValidations.Select(v => v.PackageValidationIssues))
+                    .OrderByDescending(s => s.Updated)
+                    .FirstOrDefault();
 
                 if (validationSet != null)
                 {
-                    // Get the failed validation set's validation issues. The issues are ordered by their
-                    // key so that it appears that issues are appended as more validations fail.
-                    issues = validationSet
-                        .PackageValidations
-                        .SelectMany(v => v.PackageValidationIssues)
-                        .OrderBy(i => i.Key)
-                        .Select(i => ValidationIssue.Deserialize(i.IssueCode, i.Data))
-                        .ToList();
-                }
-
-                // If the package failed validation, use the generic error message.
-                if (issues == null || !issues.Any())
-                {
-                    issues = new[] { ValidationIssue.Unknown };
+                    issues = validationSet.GetValidationIssues();
                 }
             }
 
-            // Filter out unknown issues and deduplicate the issues by code and data. This also deduplicates cases
-            // where there is extraneous data in the serialized data field or if the issue code is unknown to the
-            // gallery.
-            return issues
-                .GroupBy(x => new { x.IssueCode, Data = x.Serialize() })
-                .Select(x => x.First())
-                .ToList();
+            return issues;
+        }
+
+        public async Task StartValidationAsync(SymbolPackage symbolPackage)
+        {
+            var symbolPackageStatus = await _symbolPackageValidationInitiator.StartValidationAsync(symbolPackage);
+            await _symbolPackageService.UpdateStatusAsync(symbolPackage,
+                symbolPackageStatus,
+                commitChanges: false);
         }
     }
 }

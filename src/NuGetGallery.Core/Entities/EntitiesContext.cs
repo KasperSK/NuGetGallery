@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Data.Common;
 using System.Data.Entity;
 using System.Data.Entity.Infrastructure.Annotations;
 using System.Threading.Tasks;
@@ -39,6 +40,12 @@ namespace NuGetGallery
             ReadOnly = readOnly;
         }
 
+        public EntitiesContext(DbConnection connection, bool readOnly)
+            : base(connection, contextOwnsConnection: true)
+        {
+            ReadOnly = readOnly;
+        }
+
         public bool ReadOnly { get; private set; }
         public IDbSet<CuratedFeed> CuratedFeeds { get; set; }
         public IDbSet<CuratedPackage> CuratedPackages { get; set; }
@@ -48,6 +55,8 @@ namespace NuGetGallery
         public IDbSet<UserSecurityPolicy> UserSecurityPolicies { get; set; }
         public IDbSet<ReservedNamespace> ReservedNamespaces { get; set; }
         public IDbSet<Certificate> Certificates { get; set; }
+        public IDbSet<UserCertificate> UserCertificates { get; set; }
+        public IDbSet<SymbolPackage> SymbolPackages { get; set; }
 
         /// <summary>
         /// User or organization accounts.
@@ -232,6 +241,13 @@ namespace NuGetGallery
                            .MapLeftKey("PackageRegistrationKey")
                            .MapRightKey("UserKey"));
 
+            modelBuilder.Entity<PackageRegistration>()
+                .HasMany(pr => pr.RequiredSigners)
+                .WithMany()
+                .Map(c => c.ToTable("PackageRegistrationRequiredSigners")
+                           .MapLeftKey("PackageRegistrationKey")
+                           .MapRightKey("UserKey"));
+
             modelBuilder.Entity<Package>()
                 .HasKey(p => p.Key);
 
@@ -249,7 +265,10 @@ namespace NuGetGallery
                 .HasMany<PackageType>(p => p.PackageTypes)
                 .WithRequired(pt => pt.Package)
                 .HasForeignKey(pt => pt.PackageKey);
-            
+
+            modelBuilder.Entity<Package>()
+                .HasOptional(p => p.Certificate);
+
             modelBuilder.Entity<PackageHistory>()
                 .HasKey(pm => pm.Key);
 
@@ -332,6 +351,44 @@ namespace NuGetGallery
                             IsUnique = true,
                         }
                     }));
+
+            modelBuilder.Entity<Certificate>()
+                .Property(c => c.Sha1Thumbprint)
+                .HasMaxLength(40)
+                .HasColumnType("varchar")
+                .IsRequired();
+
+            modelBuilder.Entity<UserCertificate>()
+                .HasKey(uc => uc.Key);
+
+            modelBuilder.Entity<User>()
+                .HasMany(u => u.UserCertificates)
+                .WithRequired(uc => uc.User)
+                .HasForeignKey(uc => uc.UserKey)
+                .WillCascadeOnDelete(true); // Deleting a User entity will also delete related UserCertificate entities.
+
+            modelBuilder.Entity<Certificate>()
+                .HasMany(c => c.UserCertificates)
+                .WithRequired(uc => uc.Certificate)
+                .HasForeignKey(uc => uc.CertificateKey)
+                .WillCascadeOnDelete(true); // Deleting a Certificate entity will also delete related UserCertificate entities.
+
+            modelBuilder.Entity<Certificate>()
+                .Property(pv => pv.Expiration)
+                .IsOptional()
+                .HasColumnType("datetime2");
+
+            modelBuilder.Entity<SymbolPackage>()
+                .HasKey(s => s.Key);
+
+            modelBuilder.Entity<Package>()
+                .HasMany(p => p.SymbolPackages)
+                .WithRequired(s => s.Package)
+                .HasForeignKey(p => p.PackageKey);
+
+            modelBuilder.Entity<SymbolPackage>()
+                .Property(s => s.RowVersion)
+                .IsRowVersion();
         }
 #pragma warning restore 618
     }

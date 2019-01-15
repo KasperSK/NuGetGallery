@@ -16,8 +16,6 @@ namespace NuGetGallery
     /// </summary>
     public interface IPackageService : ICorePackageService
     {
-        PackageRegistration FindPackageRegistrationById(string id);
-
         /// <summary>
         /// Gets the package with the given ID and version when exists;
         /// otherwise gets the latest package version for the given package ID matching the provided constraints.
@@ -36,6 +34,8 @@ namespace NuGetGallery
         IEnumerable<Package> FindPackagesByAnyMatchingOwner(User user, bool includeUnlisted, bool includeVersions = false);
 
         IQueryable<PackageRegistration> FindPackageRegistrationsByOwner(User user);
+
+        IQueryable<PackageRegistration> GetAllPackageRegistrations();
 
         IEnumerable<Package> FindDependentPackages(Package package);
 
@@ -68,17 +68,17 @@ namespace NuGetGallery
         /// <param name="package">Package to which owner is added.</param>
         /// <param name="newOwner">New owner to add.</param>
         /// <returns>Awaitable task.</returns>
-        Task AddPackageOwnerAsync(PackageRegistration package, User newOwner);
+        Task AddPackageOwnerAsync(PackageRegistration package, User newOwner, bool commitChanges = true);
 
-        Task RemovePackageOwnerAsync(PackageRegistration package, User user);
+        Task RemovePackageOwnerAsync(PackageRegistration package, User user, bool commitChanges = true);
 
         Task SetLicenseReportVisibilityAsync(Package package, bool visible, bool commitChanges = true);
 
-        void EnsureValid(PackageArchiveReader packageArchiveReader);
+        Task EnsureValid(PackageArchiveReader packageArchiveReader);
 
         Task IncrementDownloadCountAsync(string id, string version, bool commitChanges = true);
 
-        Task UpdatePackageVerifiedStatusAsync(IReadOnlyCollection<PackageRegistration> package, bool isVerified);
+        Task UpdatePackageVerifiedStatusAsync(IReadOnlyCollection<PackageRegistration> package, bool isVerified, bool commitChanges = true);
 
         /// <summary>
         /// For a package get the list of owners that are not organizations.
@@ -86,5 +86,24 @@ namespace NuGetGallery
         /// <param name="package">The package.</param>
         /// <returns>The list of package owners that are not organizations.</returns>
         IEnumerable<User> GetPackageUserAccountOwners(Package package);
+
+        /// <summary>
+        /// Sets the required signer on all owned package registrations.
+        /// </summary>
+        /// <param name="signer">A signer or <c>null</c> if none.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="signer" />
+        /// is <c>null</c>.</exception>
+        Task SetRequiredSignerAsync(User signer);
+
+        /// <summary>
+        /// Sets the required signer on an owned package registration.
+        /// </summary>
+        /// <param name="registration">A package registration.</param>
+        /// <param name="signer">A signer or <c>null</c> if none.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="registration" />
+        /// is <c>null</c>.</exception>
+        Task SetRequiredSignerAsync(PackageRegistration registration, User signer, bool commitChanges = true);
     }
 }

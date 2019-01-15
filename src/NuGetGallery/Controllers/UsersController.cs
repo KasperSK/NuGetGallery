@@ -6,28 +6,29 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web.Mvc;
 using NuGetGallery.Areas.Admin;
-using NuGetGallery.Areas.Admin.Models;
 using NuGetGallery.Areas.Admin.ViewModels;
 using NuGetGallery.Authentication;
 using NuGetGallery.Configuration;
 using NuGetGallery.Filters;
+using NuGetGallery.Helpers;
 using NuGetGallery.Infrastructure.Authentication;
+using NuGetGallery.Security;
 
 namespace NuGetGallery
 {
     public partial class UsersController
         : AccountsController<User, UserAccountViewModel>
     {
-        private readonly IPackageService _packageService;
         private readonly IPackageOwnerRequestService _packageOwnerRequestService;
         private readonly IAppConfiguration _config;
         private readonly ICredentialBuilder _credentialBuilder;
         private readonly IDeleteAccountService _deleteAccountService;
         private readonly ISupportRequestService _supportRequestService;
-        
+
         public UsersController(
             ICuratedFeedService feedsQuery,
             IUserService userService,
@@ -39,17 +40,28 @@ namespace NuGetGallery
             ICredentialBuilder credentialBuilder,
             IDeleteAccountService deleteAccountService,
             ISupportRequestService supportRequestService,
-            ITelemetryService telemetryService)
-            : base(authService, feedsQuery, messageService, userService, telemetryService)
+            ITelemetryService telemetryService,
+            ISecurityPolicyService securityPolicyService,
+            ICertificateService certificateService,
+            IContentObjectService contentObjectService)
+            : base(
+                  authService,
+                  feedsQuery,
+                  packageService,
+                  messageService,
+                  userService,
+                  telemetryService,
+                  securityPolicyService,
+                  certificateService,
+                  contentObjectService)
         {
-            _packageService = packageService ?? throw new ArgumentNullException(nameof(packageService));
             _packageOwnerRequestService = packageOwnerRequestService ?? throw new ArgumentNullException(nameof(packageOwnerRequestService));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _credentialBuilder = credentialBuilder ?? throw new ArgumentNullException(nameof(credentialBuilder));
             _deleteAccountService = deleteAccountService ?? throw new ArgumentNullException(nameof(deleteAccountService));
             _supportRequestService = supportRequestService ?? throw new ArgumentNullException(nameof(supportRequestService));
         }
-        
+
         public override string AccountAction => nameof(Account);
 
         protected internal override ViewMessages Messages => new ViewMessages
@@ -59,17 +71,17 @@ namespace NuGetGallery
             EmailUpdateCancelled = Strings.UserEmailUpdateCancelled
         };
 
-        protected override void SendNewAccountEmail(User account)
+        protected override Task SendNewAccountEmailAsync(User account)
         {
             var confirmationUrl = Url.ConfirmEmail(account.Username, account.EmailConfirmationToken, relativeUrl: false);
 
-            MessageService.SendNewAccountEmail(account, confirmationUrl);
+            return MessageService.SendNewAccountEmailAsync(account, confirmationUrl);
         }
 
-        protected override void SendEmailChangedConfirmationNotice(User account)
+        protected override Task SendEmailChangedConfirmationNoticeAsync(User account)
         {
             var confirmationUrl = Url.ConfirmEmail(account.Username, account.EmailConfirmationToken, relativeUrl: false);
-            MessageService.SendEmailChangeConfirmationNotice(account, confirmationUrl);
+            return MessageService.SendEmailChangeConfirmationNoticeAsync(account, confirmationUrl);
         }
 
         protected override User GetAccount(string accountName)
@@ -81,6 +93,11 @@ namespace NuGetGallery
                 return currentUser;
             }
             return null;
+        }
+
+        protected override DeleteAccountViewModel<User> GetDeleteAccountViewModel(User account)
+        {
+            return new DeleteUserViewModel(account, GetCurrentUser(), PackageService, _supportRequestService);
         }
 
         [HttpGet]
@@ -96,7 +113,7 @@ namespace NuGetGallery
         public virtual ActionResult TransformToOrganization()
         {
             var accountToTransform = GetCurrentUser();
-            
+
             string errorReason;
             if (!UserService.CanTransformUserToOrganization(accountToTransform, out errorReason))
             {
@@ -121,11 +138,18 @@ namespace NuGetGallery
         {
             var accountToTransform = GetCurrentUser();
 
-            var adminUser = UserService.FindByUsername(transformViewModel.AdminUsername);
+            var adminUsername = transformViewModel.AdminUsername;
+            if (Regex.IsMatch(adminUsername, Constants.EmailValidationRegex, RegexOptions.None, Constants.EmailValidationRegexTimeout))
+            {
+                ModelState.AddModelError(string.Empty, Strings.TransformAccount_AdminNameIsEmail);
+                return View(transformViewModel);
+            }
+
+            var adminUser = UserService.FindByUsername(adminUsername);
             if (adminUser == null)
             {
-                ModelState.AddModelError(string.Empty, String.Format(CultureInfo.CurrentCulture,
-                    Strings.TransformAccount_AdminAccountDoesNotExist, transformViewModel.AdminUsername));
+                ModelState.AddModelError(string.Empty, string.Format(CultureInfo.CurrentCulture,
+                    Strings.TransformAccount_AdminAccountDoesNotExist, adminUsername));
                 return View(transformViewModel);
             }
 
@@ -142,16 +166,16 @@ namespace NuGetGallery
 
             if (existingTransformRequestUser != null)
             {
-                MessageService.SendOrganizationTransformRequestCancelledNotice(accountToTransform, existingTransformRequestUser);
+                await MessageService.SendOrganizationTransformRequestCancelledNoticeAsync(accountToTransform, existingTransformRequestUser);
             }
 
             var returnUrl = Url.ConfirmTransformAccount(accountToTransform);
             var confirmUrl = Url.ConfirmTransformAccount(accountToTransform, relativeUrl: false);
             var rejectUrl = Url.RejectTransformAccount(accountToTransform, relativeUrl: false);
-            MessageService.SendOrganizationTransformRequest(accountToTransform, adminUser, Url.User(accountToTransform, relativeUrl: false), confirmUrl, rejectUrl);
+            await MessageService.SendOrganizationTransformRequestAsync(accountToTransform, adminUser, Url.User(accountToTransform, relativeUrl: false), confirmUrl, rejectUrl);
 
             var cancelUrl = Url.CancelTransformAccount(accountToTransform, relativeUrl: false);
-            MessageService.SendOrganizationTransformInitiatedNotice(accountToTransform, adminUser, cancelUrl);
+            await MessageService.SendOrganizationTransformInitiatedNoticeAsync(accountToTransform, adminUser, cancelUrl);
 
             TelemetryService.TrackOrganizationTransformInitiated(accountToTransform);
 
@@ -162,7 +186,7 @@ namespace NuGetGallery
                 Strings.TransformAccount_SignInToConfirm, adminUser.Username, accountToTransform.Username);
             return Redirect(Url.LogOn(returnUrl));
         }
-        
+
         [HttpGet]
         [UIAuthorize(allowDiscontinuedLogins: true)]
         [ActionName(RouteName.TransformToOrganizationConfirmation)]
@@ -190,7 +214,7 @@ namespace NuGetGallery
                 return TransformToOrganizationFailed(errorReason);
             }
 
-            MessageService.SendOrganizationTransformRequestAcceptedNotice(accountToTransform, adminUser);
+            await MessageService.SendOrganizationTransformRequestAcceptedNoticeAsync(accountToTransform, adminUser);
 
             TelemetryService.TrackOrganizationTransformCompleted(accountToTransform);
 
@@ -218,7 +242,7 @@ namespace NuGetGallery
             {
                 if (await UserService.RejectTransformUserToOrganizationRequest(accountToTransform, adminUser, token))
                 {
-                    MessageService.SendOrganizationTransformRequestRejectedNotice(accountToTransform, adminUser);
+                    await MessageService.SendOrganizationTransformRequestRejectedNoticeAsync(accountToTransform, adminUser);
 
                     TelemetryService.TrackOrganizationTransformDeclined(accountToTransform);
 
@@ -243,10 +267,10 @@ namespace NuGetGallery
         {
             var accountToTransform = GetCurrentUser();
             var adminUser = accountToTransform.OrganizationMigrationRequest?.AdminUser;
-            
+
             if (await UserService.CancelTransformUserToOrganizationRequest(accountToTransform, token))
             {
-                MessageService.SendOrganizationTransformRequestCancelledNotice(accountToTransform, adminUser);
+                await MessageService.SendOrganizationTransformRequestCancelledNoticeAsync(accountToTransform, adminUser);
 
                 TelemetryService.TrackOrganizationTransformCancelled(accountToTransform);
 
@@ -266,89 +290,66 @@ namespace NuGetGallery
             return View("TransformToOrganizationFailed", new TransformAccountFailedViewModel(errorMessage));
         }
 
-        [HttpGet]
-        [UIAuthorize]
-        public virtual ActionResult DeleteRequest()
-        {
-            var currentUser = GetCurrentUser();
-
-            if (currentUser == null || currentUser.IsDeleted)
-            {
-                return HttpNotFound("User not found.");
-            }
-
-            var listPackageItems = _packageService
-                 .FindPackagesByAnyMatchingOwner(currentUser, includeUnlisted: true)
-                 .Select(p => new ListPackageItemViewModel(p, currentUser))
-                 .ToList();
-
-            bool hasPendingRequest = _supportRequestService.GetIssues().Where((issue) => (issue.UserKey.HasValue && issue.UserKey.Value == currentUser.Key) && 
-                                                                                 string.Equals(issue.IssueTitle, Strings.AccountDelete_SupportRequestTitle) &&
-                                                                                 issue.Key != IssueStatusKeys.Resolved).Any();
-
-            var model = new DeleteAccountViewModel()
-            {
-                Packages = listPackageItems,
-                User = currentUser,
-                AccountName = currentUser.Username,
-                HasPendingRequests = hasPendingRequest
-            };
-
-            return View("DeleteAccount", model);
-        }
-
         [HttpPost]
         [UIAuthorize]
         [ValidateAntiForgeryToken]
-        public virtual async Task<ActionResult> RequestAccountDeletion()
+        public override async Task<ActionResult> RequestAccountDeletion(string accountName = null)
         {
-            var user = GetCurrentUser();
+            var user = GetAccount(accountName);
 
             if (user == null || user.IsDeleted)
             {
-                return HttpNotFound("User not found.");
+                return HttpNotFound();
+            }
+            TelemetryService.TrackRequestForAccountDeletion(user);
+
+            if (!user.Confirmed)
+            {
+                // Unconfirmed users can be deleted immediately without creating a support request.
+                DeleteUserAccountStatus accountDeleteStatus = await _deleteAccountService.DeleteAccountAsync(userToBeDeleted: user,
+                    userToExecuteTheDelete: user,
+                    orphanPackagePolicy: AccountDeletionOrphanPackagePolicy.UnlistOrphans,
+                    commitAsTransaction: true);
+                if (!accountDeleteStatus.Success)
+                {
+                    TempData["RequestFailedMessage"] = Strings.AccountSelfDelete_Fail;
+                    return RedirectToAction("DeleteRequest");
+                }
+                OwinContext.Authentication.SignOut();
+                return SafeRedirect(Url.Home(false));
             }
 
             var isSupportRequestCreated = await _supportRequestService.TryAddDeleteSupportRequestAsync(user);
-            if (!isSupportRequestCreated)
+            if (isSupportRequestCreated)
+            {
+                await MessageService.SendAccountDeleteNoticeAsync(user);
+            }
+            else
             {
                 TempData["RequestFailedMessage"] = Strings.AccountDelete_CreateSupportRequestFails;
-                return RedirectToAction("DeleteRequest");
             }
-            MessageService.SendAccountDeleteNotice(user.ToMailAddress(), user.Username);
 
-            return RedirectToAction("DeleteRequest");
+            return RedirectToAction(nameof(DeleteRequest));
         }
 
         [HttpGet]
         [UIAuthorize(Roles = "Admins")]
         public virtual ActionResult Delete(string accountName)
         {
-            var currentUser = GetCurrentUser();
             var user = UserService.FindByUsername(accountName);
             if (user == null || user.IsDeleted || (user is Organization))
             {
-                return HttpNotFound("User not found.");
+                return HttpNotFound();
             }
-
-            var listPackageItems = _packageService
-                 .FindPackagesByAnyMatchingOwner(user, includeUnlisted: true)
-                 .Select(p => new ListPackageItemViewModel(p, currentUser))
-                 .ToList();
-            var model = new DeleteUserAccountViewModel
-            {
-                Packages = listPackageItems,
-                User = user,
-                AccountName = user.Username,
-            };
-            return View("DeleteUserAccount", model);
+            
+            return View("DeleteUserAccount", GetDeleteAccountViewModel(user));
         }
 
         [HttpDelete]
         [UIAuthorize(Roles = "Admins")]
         [RequiresAccountConfirmation("Delete account")]
         [ValidateAntiForgeryToken]
-        public virtual async Task<ActionResult> Delete(DeleteUserAccountViewModel model)
+        public virtual async Task<ActionResult> Delete(DeleteAccountAsAdminViewModel model)
         {
             var user = UserService.FindByUsername(model.AccountName);
             if (user == null || user.IsDeleted)
@@ -363,7 +364,11 @@ namespace NuGetGallery
             else
             {
                 var admin = GetCurrentUser();
-                var status = await _deleteAccountService.DeleteGalleryUserAccountAsync(user, admin, model.Signature, model.ShouldUnlist, commitAsTransaction: true);
+                var status = await _deleteAccountService.DeleteAccountAsync(
+                    userToBeDeleted: user,
+                    userToExecuteTheDelete: admin,
+                    orphanPackagePolicy: model.ShouldUnlist ? AccountDeletionOrphanPackagePolicy.UnlistOrphans : AccountDeletionOrphanPackagePolicy.KeepOrphans,
+                    commitAsTransaction: true);
                 return View("DeleteUserAccountStatus", status);
             }
         }
@@ -410,12 +415,12 @@ namespace NuGetGallery
                 ActionsRequiringPermissions.UploadNewPackageId.IsAllowedOnBehalfOfAccount(currentUser, account),
                 ActionsRequiringPermissions.UploadNewPackageVersion.IsAllowedOnBehalfOfAccount(currentUser, account),
                 ActionsRequiringPermissions.UnlistOrRelistPackage.IsAllowedOnBehalfOfAccount(currentUser, account),
-                packageIds: _packageService.FindPackageRegistrationsByOwner(account)
+                packageIds: PackageService.FindPackageRegistrationsByOwner(account)
                                 .Select(p => p.Id)
                                 .OrderBy(i => i)
                                 .ToList());
         }
-        
+
         [HttpGet]
         [UIAuthorize(allowDiscontinuedLogins: true)]
         public virtual ActionResult Thanks()
@@ -440,14 +445,18 @@ namespace NuGetGallery
                 new ListPackageOwnerViewModel(currentUser)
             }.Concat(currentUser.Organizations.Select(o => new ListPackageOwnerViewModel(o.Organization)));
 
-            var packages = _packageService.FindPackagesByAnyMatchingOwner(currentUser, includeUnlisted: true);
+            var wasAADLoginOrMultiFactorAuthenticated = User.WasMultiFactorAuthenticated() || User.WasAzureActiveDirectoryAccountUsedForSignin();
+
+            var packages = PackageService.FindPackagesByAnyMatchingOwner(currentUser, includeUnlisted: true);
             var listedPackages = packages
-                .Where(p => p.Listed)
-                .Select(p => new ListPackageItemViewModel(p, currentUser)).OrderBy(p => p.Id)
+                .Where(p => p.Listed && p.PackageStatusKey == PackageStatus.Available)
+                .Select(p => new ListPackageItemRequiredSignerViewModel(p, currentUser, SecurityPolicyService, wasAADLoginOrMultiFactorAuthenticated))
+                .OrderBy(p => p.Id)
                 .ToList();
             var unlistedPackages = packages
-                .Where(p => !p.Listed)
-                .Select(p => new ListPackageItemViewModel(p, currentUser)).OrderBy(p => p.Id)
+                .Where(p => !p.Listed || p.PackageStatusKey != PackageStatus.Available)
+                .Select(p => new ListPackageItemRequiredSignerViewModel(p, currentUser, SecurityPolicyService, wasAADLoginOrMultiFactorAuthenticated))
+                .OrderBy(p => p.Id)
                 .ToList();
 
             // find all received ownership requests
@@ -464,7 +473,7 @@ namespace NuGetGallery
                 .SelectMany(m => _packageOwnerRequestService.GetPackageOwnershipRequests(requestingOwner: m.Organization));
             var sent = userSent.Union(orgSent);
 
-            var ownerRequests = new OwnerRequestsViewModel(received, sent, currentUser, _packageService);
+            var ownerRequests = new OwnerRequestsViewModel(received, sent, currentUser, PackageService);
 
             var userReservedNamespaces = currentUser.ReservedNamespaces;
             var organizationsReservedNamespaces = currentUser.Organizations.SelectMany(m => m.Organization.ReservedNamespaces);
@@ -473,11 +482,14 @@ namespace NuGetGallery
 
             var model = new ManagePackagesViewModel
             {
+                User = currentUser,
                 Owners = owners,
                 ListedPackages = listedPackages,
                 UnlistedPackages = unlistedPackages,
                 OwnerRequests = ownerRequests,
-                ReservedNamespaces = reservedPrefixes
+                ReservedNamespaces = reservedPrefixes,
+                WasMultiFactorAuthenticated = User.WasMultiFactorAuthenticated(),
+                IsCertificatesUIEnabled = ContentObjectService.CertificatesConfiguration?.IsUIEnabledForUser(currentUser) ?? false
             };
             return View(model);
         }
@@ -488,7 +500,7 @@ namespace NuGetGallery
         {
             var currentUser = GetCurrentUser();
 
-            var model = new ManageOrganizationsViewModel(currentUser, _packageService);
+            var model = new ManageOrganizationsViewModel(currentUser, PackageService);
 
             return View(model);
         }
@@ -523,7 +535,7 @@ namespace NuGetGallery
                         ModelState.AddModelError(string.Empty, Strings.CouldNotFindAnyoneWithThatUsernameOrEmail);
                         break;
                     case PasswordResetResultType.Success:
-                        return SendPasswordResetEmail(result.User, forgotPassword: true);
+                        return await SendPasswordResetEmailAsync(result.User, forgotPassword: true);
                     default:
                         throw new NotImplementedException($"The password reset result type '{result.Type}' is not supported.");
                 }
@@ -593,12 +605,12 @@ namespace NuGetGallery
             if (credential != null && !forgot)
             {
                 // Setting a password, so notify the user
-                MessageService.SendCredentialAddedNotice(credential.User, AuthenticationService.DescribeCredential(credential));
+                await MessageService.SendCredentialAddedNoticeAsync(credential.User, AuthenticationService.DescribeCredential(credential));
             }
 
             return RedirectToAction("PasswordChanged");
         }
-        
+
         [HttpGet]
         public virtual ActionResult Profiles(string username, int page = 1)
         {
@@ -609,7 +621,8 @@ namespace NuGetGallery
                 return HttpNotFound();
             }
 
-            var packages = _packageService.FindPackagesByOwner(user, includeUnlisted: false)
+            var packages = PackageService.FindPackagesByOwner(user, includeUnlisted: false)
+                .Where(p => p.PackageStatusKey == PackageStatus.Available)
                 .OrderByDescending(p => p.PackageRegistration.DownloadCount)
                 .Select(p => new ListPackageItemViewModel(p, currentUser)
                 {
@@ -641,11 +654,11 @@ namespace NuGetGallery
                     return AccountView(user, model);
                 }
 
-                return SendPasswordResetEmail(user, forgotPassword: false);
+                return await SendPasswordResetEmailAsync(user, forgotPassword: false);
             }
             else
             {
-                if (!model.ChangePassword.EnablePasswordLogin)
+                if (model.ChangePassword.DisablePasswordLogin)
                 {
                     return await RemovePassword();
                 }
@@ -670,6 +683,33 @@ namespace NuGetGallery
                 TempData["Message"] = Strings.PasswordChanged;
                 return RedirectToAction("Account");
             }
+        }
+
+        [HttpPost]
+        [UIAuthorize]
+        [ValidateAntiForgeryToken]
+        public virtual async Task<ActionResult> ChangeMultiFactorAuthentication(bool enableMultiFactor)
+        {
+            var user = GetCurrentUser();
+
+            await UserService.ChangeMultiFactorAuthentication(user, enableMultiFactor);
+
+            TempData["Message"] = string.Format(
+                enableMultiFactor ? Strings.MultiFactorAuth_Enabled : Strings.MultiFactorAuth_Disabled,
+                _config.Brand);
+
+            if (enableMultiFactor)
+            {
+                // Add the claim to remove the warning indicators for 2FA.
+                OwinContext.AddClaim(NuGetClaims.EnabledMultiFactorAuthentication);
+            }
+            else
+            {
+                // Remove the claim from login to show warning indicators for 2FA.
+                OwinContext.RemoveClaim(NuGetClaims.EnabledMultiFactorAuthentication);
+            }
+
+            return RedirectToAction(AccountAction);
         }
 
         [HttpPost]
@@ -777,7 +817,7 @@ namespace NuGetGallery
                 Response.StatusCode = (int)HttpStatusCode.BadRequest;
                 return Json(Strings.UserNotFound);
             }
-            
+
             var resolvedScopes = BuildScopes(scopeOwner, scopes, subjects);
             if (!VerifyScopes(resolvedScopes))
             {
@@ -799,7 +839,7 @@ namespace NuGetGallery
 
             var newCredentialViewModel = await GenerateApiKeyInternal(description, resolvedScopes, expiration);
 
-            MessageService.SendCredentialAddedNotice(GetCurrentUser(), newCredentialViewModel);
+            await MessageService.SendCredentialAddedNoticeAsync(GetCurrentUser(), newCredentialViewModel);
 
             return Json(new ApiKeyViewModel(newCredentialViewModel));
         }
@@ -837,6 +877,11 @@ namespace NuGetGallery
             return Json(new ApiKeyViewModel(credentialViewModel));
         }
 
+        protected override RouteUrlTemplate<string> GetDeleteCertificateForAccountTemplate(string accountName)
+        {
+            return Url.DeleteUserCertificateTemplate();
+        }
+
         private async Task<CredentialViewModel> GenerateApiKeyInternal(string description, ICollection<Scope> scopes, TimeSpan? expiration)
         {
             var user = GetCurrentUser();
@@ -861,7 +906,7 @@ namespace NuGetGallery
             { NuGetScopes.PackageUnlist, new [] { ActionsRequiringPermissions.UnlistOrRelistPackage } },
             { NuGetScopes.PackageVerify, new [] { ActionsRequiringPermissions.VerifyPackage } },
         };
-        
+
         private bool VerifyScopes(IEnumerable<Scope> scopes)
         {
             if (!scopes.Any())
@@ -877,7 +922,7 @@ namespace NuGetGallery
                     // All scopes must have an allowed action.
                     return false;
                 }
-                
+
                 // Get the list of actions allowed by this scope.
                 var actions = new List<IActionRequiringEntityPermissions>();
                 foreach (var allowedAction in AllowedActionToActionRequiringEntityPermissionsMap.Keys)
@@ -950,7 +995,7 @@ namespace NuGetGallery
             await AuthenticationService.RemoveCredential(user, cred);
 
             // Notify the user of the change
-            MessageService.SendCredentialRemovedNotice(user, AuthenticationService.DescribeCredential(cred));
+            await MessageService.SendCredentialRemovedNoticeAsync(user, AuthenticationService.DescribeCredential(cred));
 
             return Json(Strings.CredentialRemoved);
         }
@@ -973,8 +1018,14 @@ namespace NuGetGallery
             {
                 await AuthenticationService.RemoveCredential(user, cred);
 
+                if (cred.IsPassword())
+                {
+                    // Clear the password login claim, to remove warnings.
+                    OwinContext.RemoveClaim(NuGetClaims.PasswordLogin);
+                }
+
                 // Notify the user of the change
-                MessageService.SendCredentialRemovedNotice(user, AuthenticationService.DescribeCredential(cred));
+                await MessageService.SendCredentialRemovedNoticeAsync(user, AuthenticationService.DescribeCredential(cred));
 
                 TempData["Message"] = message;
             }
@@ -993,7 +1044,7 @@ namespace NuGetGallery
                 .Sum(p => p.Value.Count);
 
             model.ChangePassword = model.ChangePassword ?? new ChangePasswordViewModel();
-            model.ChangePassword.EnablePasswordLogin = model.HasPassword;
+            model.ChangePassword.DisablePasswordLogin = !model.HasPassword;
         }
 
         private Dictionary<CredentialKind, List<CredentialViewModel>> GetCredentialGroups(User user)
@@ -1015,14 +1066,14 @@ namespace NuGetGallery
                 c.Type.StartsWith(CredentialTypes.External.Prefix, StringComparison.OrdinalIgnoreCase));
         }
 
-        private ActionResult SendPasswordResetEmail(User user, bool forgotPassword)
+        private async Task<ActionResult> SendPasswordResetEmailAsync(User user, bool forgotPassword)
         {
             var resetPasswordUrl = Url.ResetEmailOrPassword(
                 user.Username,
                 user.PasswordResetToken,
                 forgotPassword,
                 relativeUrl: false);
-            MessageService.SendPasswordResetInstructions(user, resetPasswordUrl, forgotPassword);
+            await MessageService.SendPasswordResetInstructionsAsync(user, resetPasswordUrl, forgotPassword);
 
             return RedirectToAction(actionName: "PasswordSent", controllerName: "Users");
         }

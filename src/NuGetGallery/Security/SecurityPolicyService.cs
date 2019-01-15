@@ -1,4 +1,5 @@
 ﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
@@ -6,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Web;
+using Autofac;
 using NuGetGallery.Auditing;
 using NuGetGallery.Configuration;
 using NuGetGallery.Diagnostics;
@@ -17,8 +19,20 @@ namespace NuGetGallery.Security
     /// </summary>
     public class SecurityPolicyService : ISecurityPolicyService
     {
-        private static Lazy<IEnumerable<UserSecurityPolicyHandler>> _userHandlers =
-            new Lazy<IEnumerable<UserSecurityPolicyHandler>>(CreateUserHandlers);
+        private static Lazy<IEnumerable<UserSecurityPolicyHandler>> _userHandlers
+            = new Lazy<IEnumerable<UserSecurityPolicyHandler>>(CreateUserHandlers);
+        private static Lazy<IEnumerable<PackageSecurityPolicyHandler>> _packageHandlers
+            = new Lazy<IEnumerable<PackageSecurityPolicyHandler>>(CreatePackageHandlers);
+        private static readonly ControlRequiredSignerPolicy _controlRequiredSignerPolicy
+            = new ControlRequiredSignerPolicy();
+        private static readonly AutomaticallyOverwriteRequiredSignerPolicy _automaticallyOverwriteRequiredSignerPolicy
+            = new AutomaticallyOverwriteRequiredSignerPolicy();
+        private static readonly RequireOrganizationTenantPolicy _organizationTenantPolicy
+            = RequireOrganizationTenantPolicy.Create();
+
+        private readonly Lazy<IUserService> _userService;
+        private readonly Lazy<IPackageOwnershipManagementService> _packageOwnershipManagementService;
+        private readonly ITelemetryService _telemetryService;
 
         protected IEntitiesContext EntitiesContext { get; set; }
 
@@ -30,11 +44,21 @@ namespace NuGetGallery.Security
 
         protected IUserSecurityPolicySubscription DefaultSubscription { get; set; }
 
+        protected IUserSecurityPolicySubscription MicrosoftTeamSubscription { get; set; }
+
         protected SecurityPolicyService()
         {
         }
 
-        public SecurityPolicyService(IEntitiesContext entitiesContext, IAuditingService auditing, IDiagnosticsService diagnostics, IAppConfiguration configuration)
+        public SecurityPolicyService(
+            IEntitiesContext entitiesContext,
+            IAuditingService auditing,
+            IDiagnosticsService diagnostics,
+            IAppConfiguration configuration,
+            Lazy<IUserService> userService,
+            Lazy<IPackageOwnershipManagementService> packageOwnershipManagementService,
+            ITelemetryService telemetryService,
+            MicrosoftTeamSubscription microsoftTeamSubscription = null)
         {
             EntitiesContext = entitiesContext ?? throw new ArgumentNullException(nameof(entitiesContext));
             Auditing = auditing ?? throw new ArgumentNullException(nameof(auditing));
@@ -47,6 +71,10 @@ namespace NuGetGallery.Security
             Diagnostics = diagnostics.SafeGetSource(nameof(SecurityPolicyService));
             Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             DefaultSubscription = new DefaultSubscription();
+            MicrosoftTeamSubscription = microsoftTeamSubscription;
+            _packageOwnershipManagementService = packageOwnershipManagementService ?? throw new ArgumentNullException(nameof(packageOwnershipManagementService));
+            _userService = userService ?? throw new ArgumentNullException(nameof(userService));
+            _telemetryService = telemetryService ?? throw new ArgumentNullException(nameof(telemetryService));
         }
 
         /// <summary>
@@ -61,14 +89,33 @@ namespace NuGetGallery.Security
         }
 
         /// <summary>
-        /// Available user security policy subscriptions.
+        /// Available package security policy handlers.
         /// </summary>
-        public virtual IEnumerable<IUserSecurityPolicySubscription> UserSubscriptions
+        protected virtual IEnumerable<PackageSecurityPolicyHandler> PackageHandlers
         {
             get
             {
-                return new List<IUserSecurityPolicySubscription>();
+                return _packageHandlers.Value;
             }
+        }
+
+        /// <summary>
+        /// Available policy subscriptions.
+        /// </summary>
+        public virtual IEnumerable<IUserSecurityPolicySubscription> Subscriptions
+        {
+            get
+            {
+                yield return _controlRequiredSignerPolicy;
+                yield return _automaticallyOverwriteRequiredSignerPolicy;
+                yield return _organizationTenantPolicy;
+                yield return MicrosoftTeamSubscription;
+            }
+        }
+
+        private IUserSecurityPolicySubscription GetSubscription(User user, string subscriptionName)
+        {
+            return Subscriptions.FirstOrDefault(s => s.SubscriptionName.Equals(subscriptionName, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>
@@ -82,14 +129,18 @@ namespace NuGetGallery.Security
         /// <returns></returns>
         public async Task<SecurityPolicyResult> EvaluateUserPoliciesAsync(
             SecurityPolicyAction action,
+            User currentUser,
             HttpContextBase httpContext)
         {
+            currentUser = currentUser ?? throw new ArgumentNullException(nameof(currentUser));
+            httpContext = httpContext ?? throw new ArgumentNullException(nameof(httpContext));
+
             // Evaluate default policies
             if (Configuration.EnforceDefaultSecurityPolicies)
             {
                 var defaultPolicies = DefaultSubscription.Policies;
 
-                var result = await EvaluateUserPoliciesInternalAsync(action, httpContext, defaultPolicies, auditSuccess: false);
+                var result = await EvaluateUserPoliciesInternalAsync(action, currentUser, httpContext, defaultPolicies, auditSuccess: false);
                 if (!result.Success)
                 {
                     return result;
@@ -97,20 +148,103 @@ namespace NuGetGallery.Security
             }
 
             // Evaluate user specific policies
-            return await EvaluateUserPoliciesInternalAsync(action, httpContext, auditSuccess: true);
+            return await EvaluateUserPoliciesInternalAsync(action, currentUser, httpContext, auditSuccess: true);
         }
 
         private Task<SecurityPolicyResult> EvaluateUserPoliciesInternalAsync(
             SecurityPolicyAction action,
+            User currentUser,
             HttpContextBase httpContext,
             IEnumerable<UserSecurityPolicy> policies = null,
             bool auditSuccess = true)
         {
+            policies = policies ?? currentUser.SecurityPolicies;
+            return EvaluateInternalAsync(action, policies, currentUser, currentUser, httpContext, auditSuccess);
+        }
+
+        /// <summary>
+        /// Evaluate package security policies for the specified action.
+        /// </summary>
+        /// <param name="action">Gallery action to evaluate.</param>
+        /// <param name="httpContext">Current http context.</param>
+        /// <param name="package">The package to evaluate.</param>
+        /// <param name="packageRegistration">The package registration. Will be <code>null</code> if the <paramref name="package"/> has a new package ID.</param>
+        /// <returns></returns>
+        public Task<SecurityPolicyResult> EvaluatePackagePoliciesAsync(
+            SecurityPolicyAction action,
+            Package package,
+            User currentUser,
+            User owner,
+            HttpContextBase httpContext)
+        {
+            currentUser = currentUser ?? throw new ArgumentNullException(nameof(currentUser));
+            owner = owner ?? throw new ArgumentNullException(nameof(owner));
             httpContext = httpContext ?? throw new ArgumentNullException(nameof(httpContext));
 
-            var account = httpContext.GetCurrentUser();
-            policies = policies ?? account.SecurityPolicies;
-            return EvaluateInternalAsync(action, policies, account, account, httpContext, auditSuccess);
+            return EvaluatePackagePoliciesInternalAsync(action, package, currentUser, owner, httpContext);
+        }
+
+        private async Task<SecurityPolicyResult> EvaluatePackagePoliciesInternalAsync(
+            SecurityPolicyAction action,
+            Package package,
+            User sourceAccount,
+            User targetAccount,
+            HttpContextBase httpContext,
+            IEnumerable<UserSecurityPolicy> policies = null,
+            bool auditSuccess = true)
+        {
+            policies = policies ?? targetAccount.SecurityPolicies;
+
+            var relevantHandlers = PackageHandlers.Where(h => h.Action == action).ToList();
+
+            var packagePoliciesResult = SecurityPolicyResult.SuccessResult;
+            foreach (var handler in relevantHandlers)
+            {
+                var foundPolicies = policies.Where(p => p.Name.Equals(handler.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+
+                if (foundPolicies.Any())
+                {
+                    var context = new PackageSecurityPolicyEvaluationContext(
+                        _userService.Value,
+                        _packageOwnershipManagementService.Value,
+                        _telemetryService,
+                        foundPolicies,
+                        package,
+                        sourceAccount,
+                        targetAccount,
+                        httpContext);
+
+                    var result = await handler.EvaluateAsync(context);
+
+                    if (auditSuccess || !result.Success)
+                    {
+                        await Auditing.SaveAuditRecordAsync(new UserSecurityPolicyAuditRecord(
+                        context.TargetAccount.Username, GetAuditAction(action), foundPolicies, result.Success, result.ErrorMessage));
+                    }
+
+                    if (!result.Success)
+                    {
+                        Diagnostics.Information(
+                        $"Security policy from subscription '{foundPolicies.First().Subscription}' - '{handler.Name}' failed with error '{result.ErrorMessage}'.");
+
+                        return result;
+                    }
+
+                    if (result.HasWarnings)
+                    {
+                        if (packagePoliciesResult == SecurityPolicyResult.SuccessResult)
+                        {
+                            packagePoliciesResult = result;
+                        }
+                        else
+                        {
+                            packagePoliciesResult.AddWarnings(result.WarningMessages);
+                        }
+                    }
+                }
+            }
+
+            return packagePoliciesResult;
         }
 
         /// <summary>
@@ -147,7 +281,7 @@ namespace NuGetGallery.Security
                 if (foundPolicies.Any())
                 {
                     var context = new UserSecurityPolicyEvaluationContext(foundPolicies, sourceAccount, targetAccount, httpContext);
-                    var result = handler.Evaluate(context);
+                    var result = await handler.EvaluateAsync(context);
 
                     if (auditSuccess || !result.Success)
                     {
@@ -193,7 +327,7 @@ namespace NuGetGallery.Security
                 throw new ArgumentException(nameof(subscriptionName));
             }
 
-            var subscription = UserSubscriptions.FirstOrDefault(s => s.SubscriptionName.Equals(subscriptionName, StringComparison.OrdinalIgnoreCase));
+            var subscription = GetSubscription(user, subscriptionName);
             if (subscription == null)
             {
                 throw new NotSupportedException($"Subscription '{subscriptionName}' not found.");
@@ -232,7 +366,7 @@ namespace NuGetGallery.Security
                 throw new ArgumentException(nameof(subscriptionName));
             }
 
-            var subscription = UserSubscriptions.FirstOrDefault(s => s.SubscriptionName.Equals(subscriptionName, StringComparison.OrdinalIgnoreCase));
+            var subscription = GetSubscription(user, subscriptionName);
             if (subscription == null)
             {
                 throw new NotSupportedException($"Subscription '{subscriptionName}' not found.");
@@ -295,7 +429,7 @@ namespace NuGetGallery.Security
                 throw new ArgumentException(nameof(subscriptionName));
             }
 
-            var subscription = UserSubscriptions.FirstOrDefault(s => s.SubscriptionName.Equals(subscriptionName, StringComparison.OrdinalIgnoreCase));
+            var subscription = GetSubscription(user, subscriptionName);
             if (subscription == null)
             {
                 throw new NotSupportedException($"Subscription '{subscriptionName}' not found.");
@@ -358,7 +492,14 @@ namespace NuGetGallery.Security
         {
             yield return new RequirePackageVerifyScopePolicy();
             yield return new RequireMinProtocolVersionForPushPolicy();
-            yield return new RequireOrganizationTenantPolicy();
+            yield return _organizationTenantPolicy;
+            yield return _controlRequiredSignerPolicy;
+            yield return _automaticallyOverwriteRequiredSignerPolicy;
         }
-   }
+
+        private static IEnumerable<PackageSecurityPolicyHandler> CreatePackageHandlers()
+        {
+            yield return new RequirePackageMetadataCompliancePolicy();
+        }
+    }
 }

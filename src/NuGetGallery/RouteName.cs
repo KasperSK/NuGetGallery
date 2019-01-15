@@ -27,6 +27,7 @@ namespace NuGetGallery
         public const string Profile = "Profile";
         public const string DisplayPackage = "package-route";
         public const string DownloadPackage = "DownloadPackage";
+        public const string DownloadSymbolsPackage = "DownloadSymbolsPackage";
         public const string DownloadNuGetExe = "DownloadNuGetExe";
         public const string Home = "Home";
         public const string Stats = "Stats";
@@ -42,9 +43,11 @@ namespace NuGetGallery
         public const string PackageOwnerRejection = "PackageOwnerRejection";
         public const string PackageOwnerCancellation = "PackageOwnerCancellation";
         public const string PackageAction = "PackageAction";
+        public const string PackageDeleteAction = "PackageDeleteAction";
         public const string PushPackageApi = "PushPackageApi";
         public const string PublishPackageApi = "PublishPackageApi";
         public const string DeletePackageApi = "DeletePackageApi";
+        public const string PushSymbolPackageApi = "PushSymbolPackageApi";
         public const string PasswordReset = "PasswordReset";
         public const string PasswordSet = "PasswordSet";
         public const string NewSubmission = "NewSubmission";
@@ -78,6 +81,7 @@ namespace NuGetGallery
         public const string ConfirmAccount = "ConfirmAccount";
         public const string SigninAssistance = "SigninAssistance";
         public const string ChangeEmailSubscription = "ChangeEmailSubscription";
+        public const string ChangeMultiFactorAuthentication = "ChangeMultiFactorAuthentication";
         public const string ErrorReadOnly = "ErrorReadOnly";
         public const string Error500 = "Error500";
         public const string Error404 = "Error404";
@@ -90,5 +94,14 @@ namespace NuGetGallery
         public const string Downloads = "Downloads";
         public const string AdminDeleteAccount = "AdminDeleteAccount";
         public const string UserDeleteAccount = "DeleteAccount";
+        public const string AddUserCertificate = "AddUserCertificate";
+        public const string DeleteUserCertificate = "DeleteUserCertificate";
+        public const string GetUserCertificate = "GetUserCertificate";
+        public const string GetUserCertificates = "GetUserCertificates";
+        public const string AddOrganizationCertificate = "AddOrganizationCertificate";
+        public const string DeleteOrganizationCertificate = "DeleteOrganizationCertificate";
+        public const string GetOrganizationCertificate = "GetOrganizationCertificate";
+        public const string GetOrganizationCertificates = "GetOrganizationCertificates";
+        public const string SetRequiredSigner = "SetRequiredSigner";
     }
 }

@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
@@ -24,12 +25,12 @@ namespace NuGetGallery
 
         public Task<ActionResult> CreateDownloadFileActionResultAsync(Uri requestUrl, string folderName, string fileName)
         {
-            if (String.IsNullOrWhiteSpace(folderName))
+            if (string.IsNullOrWhiteSpace(folderName))
             {
                 throw new ArgumentNullException(nameof(folderName));
             }
 
-            if (String.IsNullOrWhiteSpace(fileName))
+            if (string.IsNullOrWhiteSpace(fileName))
             {
                 throw new ArgumentNullException(nameof(fileName));
             }
@@ -50,12 +51,12 @@ namespace NuGetGallery
 
         public Task DeleteFileAsync(string folderName, string fileName)
         {
-            if (String.IsNullOrWhiteSpace(folderName))
+            if (string.IsNullOrWhiteSpace(folderName))
             {
                 throw new ArgumentNullException(nameof(folderName));
             }
 
-            if (String.IsNullOrWhiteSpace(fileName))
+            if (string.IsNullOrWhiteSpace(fileName))
             {
                 throw new ArgumentNullException(nameof(fileName));
             }
@@ -71,12 +72,12 @@ namespace NuGetGallery
 
         public Task<bool> FileExistsAsync(string folderName, string fileName)
         {
-            if (String.IsNullOrWhiteSpace(folderName))
+            if (string.IsNullOrWhiteSpace(folderName))
             {
                 throw new ArgumentNullException(nameof(folderName));
             }
 
-            if (String.IsNullOrWhiteSpace(fileName))
+            if (string.IsNullOrWhiteSpace(fileName))
             {
                 throw new ArgumentNullException(nameof(fileName));
             }
@@ -89,12 +90,12 @@ namespace NuGetGallery
 
         public Task<Stream> GetFileAsync(string folderName, string fileName)
         {
-            if (String.IsNullOrWhiteSpace(folderName))
+            if (string.IsNullOrWhiteSpace(folderName))
             {
                 throw new ArgumentNullException(nameof(folderName));
             }
 
-            if (String.IsNullOrWhiteSpace(fileName))
+            if (string.IsNullOrWhiteSpace(fileName))
             {
                 throw new ArgumentNullException(nameof(fileName));
             }
@@ -107,12 +108,12 @@ namespace NuGetGallery
 
         public Task<IFileReference> GetFileReferenceAsync(string folderName, string fileName, string ifNoneMatch = null)
         {
-            if (String.IsNullOrWhiteSpace(folderName))
+            if (string.IsNullOrWhiteSpace(folderName))
             {
                 throw new ArgumentNullException(nameof(folderName));
             }
 
-            if (String.IsNullOrWhiteSpace(fileName))
+            if (string.IsNullOrWhiteSpace(fileName))
             {
                 throw new ArgumentNullException(nameof(fileName));
             }
@@ -126,12 +127,12 @@ namespace NuGetGallery
 
         public Task SaveFileAsync(string folderName, string fileName, Stream packageFile, bool overwrite = true)
         {
-            if (String.IsNullOrWhiteSpace(folderName))
+            if (string.IsNullOrWhiteSpace(folderName))
             {
                 throw new ArgumentNullException(nameof(folderName));
             }
 
-            if (String.IsNullOrWhiteSpace(fileName))
+            if (string.IsNullOrWhiteSpace(fileName))
             {
                 throw new ArgumentNullException(nameof(fileName));
             }
@@ -146,7 +147,7 @@ namespace NuGetGallery
             var dirPath = Path.GetDirectoryName(filePath);
 
             _fileSystemService.CreateDirectory(dirPath);
-                        
+
             try
             {
                 using (var file = _fileSystemService.OpenWrite(filePath, overwrite))
@@ -156,8 +157,8 @@ namespace NuGetGallery
             }
             catch (IOException ex)
             {
-                throw new InvalidOperationException(
-                    String.Format(
+                throw new FileAlreadyExistsException(
+                    string.Format(
                         CultureInfo.CurrentCulture,
                         "There is already a file with name {0} in folder {1}.",
                         fileName,
@@ -166,6 +167,11 @@ namespace NuGetGallery
             }
 
             return Task.FromResult(0);
+        }
+
+        public async Task SaveFileAsync(string folderName, string fileName, Stream file, IAccessCondition condition)
+        {
+            await SaveFileAsync(folderName, fileName, file);
         }
 
         public Task CopyFileAsync(Uri srcUri, string destFolderName, string destFileName, IAccessCondition destAccessCondition)
@@ -206,14 +212,14 @@ namespace NuGetGallery
             var destFilePath = BuildPath(_configuration.FileStorageDirectory, destFolderName, destFileName);
 
             _fileSystemService.CreateDirectory(Path.GetDirectoryName(destFilePath));
-            
+
             try
             {
                 _fileSystemService.Copy(srcFilePath, destFilePath, overwrite: false);
             }
             catch (IOException e)
             {
-                throw new InvalidOperationException("Could not copy because destination file already exists", e);
+                throw new FileAlreadyExistsException("Could not copy because destination file already exists", e);
             }
 
             return Task.FromResult<string>(null);
@@ -242,6 +248,14 @@ namespace NuGetGallery
             throw new NotImplementedException();
         }
 
+        public Task SetMetadataAsync(
+            string folderName,
+            string fileName,
+            Func<Lazy<Task<Stream>>, IDictionary<string, string>, Task<bool>> updateMetadataAsync)
+        {
+            return Task.CompletedTask;
+        }
+
         private static string BuildPath(string fileStorageDirectory, string folderName, string fileName)
         {
             // Resolve the file storage directory
@@ -264,6 +278,7 @@ namespace NuGetGallery
             switch (folderName)
             {
                 case CoreConstants.PackagesFolderName:
+                case CoreConstants.SymbolPackagesFolderName:
                     return CoreConstants.PackageContentType;
 
                 case CoreConstants.DownloadsFolderName:
@@ -271,7 +286,7 @@ namespace NuGetGallery
 
                 default:
                     throw new InvalidOperationException(
-                        String.Format(CultureInfo.CurrentCulture, "The folder name {0} is not supported.", folderName));
+                        string.Format(CultureInfo.CurrentCulture, "The folder name {0} is not supported.", folderName));
             }
         }
     }

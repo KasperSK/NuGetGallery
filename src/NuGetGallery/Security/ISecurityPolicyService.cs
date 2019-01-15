@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Web;
-using NuGetGallery.Filters;
 
 namespace NuGetGallery.Security
 {
@@ -14,9 +13,9 @@ namespace NuGetGallery.Security
     public interface ISecurityPolicyService
     {
         /// <summary>
-        /// Available user security policy subscriptions.
+        /// Available security policy subscriptions.
         /// </summary>
-        IEnumerable<IUserSecurityPolicySubscription> UserSubscriptions { get; }
+        IEnumerable<IUserSecurityPolicySubscription> Subscriptions { get; }
 
         /// <summary>
         /// Check if a user is subscribed to one or more security policies.
@@ -52,11 +51,12 @@ namespace NuGetGallery.Security
         /// Evaluate any security policies that may apply to the current context.
         /// </summary>
         /// <param name="action">Security policy action.</param>
+        /// <param name="user">The user for which to evaluate security policies.</param>
         /// <param name="httpContext">Http context.</param>
         /// <returns>A task that represents the asynchronous operation.
         /// The task result (<see cref="Task{TResult}.Result" />) returns a <see cref="SecurityPolicyResult" />
         /// instance.</returns>
-        Task<SecurityPolicyResult> EvaluateUserPoliciesAsync(SecurityPolicyAction action, HttpContextBase httpContext);
+        Task<SecurityPolicyResult> EvaluateUserPoliciesAsync(SecurityPolicyAction action, User user, HttpContextBase httpContext);
 
         /// <summary>
         /// Evaluate any organization security policies for the specified account.
@@ -68,5 +68,18 @@ namespace NuGetGallery.Security
         /// The task result (<see cref="Task{TResult}.Result" />) returns a <see cref="SecurityPolicyResult" />
         /// instance.</returns>
         Task<SecurityPolicyResult> EvaluateOrganizationPoliciesAsync(SecurityPolicyAction action, Organization organization, User account);
+
+        /// <summary>
+        /// Evaluate any package security policies that may apply to the current context.
+        /// </summary>
+        /// <param name="action">Security policy action.</param>
+        /// <param name="package">The package to evaluate.</param>
+        /// <param name="currentUser">The current user.</param>
+        /// <param name="owner">The package owner.</param>
+        /// <param name="httpContext">Http context.</param>
+        /// <returns>A task that represents the asynchronous operation.
+        /// The task result (<see cref="Task{TResult}.Result" />) returns a <see cref="SecurityPolicyResult"/>
+        /// instance.</returns>
+        Task<SecurityPolicyResult> EvaluatePackagePoliciesAsync(SecurityPolicyAction action, Package package, User currentUser, User owner, HttpContextBase httpContext);
     }
 }

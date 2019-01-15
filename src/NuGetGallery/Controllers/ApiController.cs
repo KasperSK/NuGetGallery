@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 using System.Globalization;
@@ -10,8 +11,8 @@ using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
+using System.Web;
 using System.Web.Mvc;
-using System.Web.UI;
 using Newtonsoft.Json.Linq;
 using NuGet.Frameworks;
 using NuGet.Packaging;
@@ -53,6 +54,9 @@ namespace NuGetGallery
         protected ISecurityPolicyService SecurityPolicyService { get; set; }
         public IReservedNamespaceService ReservedNamespaceService { get; set; }
         public IPackageUploadService PackageUploadService { get; set; }
+        public IPackageDeleteService PackageDeleteService { get; set; }
+        public ISymbolPackageFileService SymbolPackageFileService { get; set; }
+        public ISymbolPackageUploadService SymbolPackageUploadService { get; set; }
 
         protected ApiController()
         {
@@ -78,7 +82,10 @@ namespace NuGetGallery
             ICredentialBuilder credentialBuilder,
             ISecurityPolicyService securityPolicies,
             IReservedNamespaceService reservedNamespaceService,
-            IPackageUploadService packageUploadService)
+            IPackageUploadService packageUploadService,
+            IPackageDeleteService packageDeleteService,
+            ISymbolPackageFileService symbolPackageFileService,
+            ISymbolPackageUploadService symbolPackageUploadService)
         {
             ApiScopeEvaluator = apiScopeEvaluator;
             EntitiesContext = entitiesContext;
@@ -100,6 +107,8 @@ namespace NuGetGallery
             ReservedNamespaceService = reservedNamespaceService;
             PackageUploadService = packageUploadService;
             StatisticsService = null;
+            SymbolPackageFileService = symbolPackageFileService;
+            SymbolPackageUploadService = symbolPackageUploadService;
         }
 
         public ApiController(
@@ -122,18 +131,35 @@ namespace NuGetGallery
             ICredentialBuilder credentialBuilder,
             ISecurityPolicyService securityPolicies,
             IReservedNamespaceService reservedNamespaceService,
-            IPackageUploadService packageUploadService)
+            IPackageUploadService packageUploadService,
+            IPackageDeleteService packageDeleteService,
+            ISymbolPackageFileService symbolPackageFileService,
+            ISymbolPackageUploadService symbolPackageUploadServivce)
             : this(apiScopeEvaluator, entitiesContext, packageService, packageFileService, userService, contentService,
                   indexingService, searchService, autoCuratePackage, statusService, messageService, auditingService,
                   configurationService, telemetryService, authenticationService, credentialBuilder, securityPolicies,
-                  reservedNamespaceService, packageUploadService)
+                  reservedNamespaceService, packageUploadService, packageDeleteService, symbolPackageFileService, 
+                  symbolPackageUploadServivce)
         {
             StatisticsService = statisticsService;
+        }
+
+
+        [HttpGet]
+        [ActionName("GetSymbolPackageApi")]
+        public virtual async Task<ActionResult> GetSymbolPackage(string id, string version)
+        {
+            return await GetPackageInternal(id, version, isSymbolPackage: true);
         }
 
         [HttpGet]
         [ActionName("GetPackageApi")]
         public virtual async Task<ActionResult> GetPackage(string id, string version)
+        {
+            return await GetPackageInternal(id, version, isSymbolPackage: false);
+        }
+
+        protected internal async Task<ActionResult> GetPackageInternal(string id, string version, bool isSymbolPackage = false)
         {
             // some security paranoia about URL hacking somehow creating e.g. open redirects
             // validate user input: explicit calls to the same validators used during Package Registrations
@@ -143,25 +169,31 @@ namespace NuGetGallery
                 return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, "The format of the package id is invalid");
             }
 
-            // if version is non-null, check if it's semantically correct and normalize it.
-            if (!String.IsNullOrEmpty(version))
+            Package package = null;
+            try
             {
-                NuGetVersion dummy;
-                if (!NuGetVersion.TryParse(version, out dummy))
+                if (!string.IsNullOrEmpty(version))
                 {
-                    return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, "The package version is not a valid semantic version");
-                }
+                    // if version is non-null, check if it's semantically correct and normalize it.
+                    NuGetVersion dummy;
+                    if (!NuGetVersion.TryParse(version, out dummy))
+                    {
+                        return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, "The package version is not a valid semantic version");
+                    }
 
-                // Normalize the version
-                version = NuGetVersionFormatter.Normalize(version);
-            }
-            else
-            {
-                // If version is null, get the latest version from the database.
-                // This ensures that on package restore scenario where version will be non null, we don't hit the database.
-                try
+                    // Normalize the version
+                    version = NuGetVersionFormatter.Normalize(version);
+
+                    if (isSymbolPackage)
+                    {
+                        package = PackageService.FindPackageByIdAndVersionStrict(id, version);
+                    }
+                }
+                else
                 {
-                    var package = PackageService.FindPackageByIdAndVersion(
+                    // If version is null, get the latest version from the database.
+                    // This ensures that on package restore scenario where version will be non null, we don't hit the database.
+                    package = PackageService.FindPackageByIdAndVersion(
                         id,
                         version,
                         SemVerLevelKey.SemVer2,
@@ -169,35 +201,54 @@ namespace NuGetGallery
 
                     if (package == null)
                     {
-                        return new HttpStatusCodeWithBodyResult(HttpStatusCode.NotFound, String.Format(CultureInfo.CurrentCulture, Strings.PackageWithIdAndVersionNotFound, id, version));
+                        return new HttpStatusCodeWithBodyResult(HttpStatusCode.NotFound, string.Format(CultureInfo.CurrentCulture, Strings.PackageWithIdAndVersionNotFound, id, version));
                     }
+
                     version = package.NormalizedVersion;
-
-                }
-                catch (SqlException e)
-                {
-                    QuietLog.LogHandledException(e);
-
-                    // Database was unavailable and we don't have a version, return a 503
-                    return new HttpStatusCodeWithBodyResult(HttpStatusCode.ServiceUnavailable, Strings.DatabaseUnavailable_TrySpecificVersion);
-                }
-                catch (DataException e)
-                {
-                    QuietLog.LogHandledException(e);
-
-                    // Database was unavailable and we don't have a version, return a 503
-                    return new HttpStatusCodeWithBodyResult(HttpStatusCode.ServiceUnavailable, Strings.DatabaseUnavailable_TrySpecificVersion);
                 }
             }
-
-            if (ConfigurationService.Features.TrackPackageDownloadCountInLocalDatabase)
+            catch (SqlException e)
             {
-                await PackageService.IncrementDownloadCountAsync(id, version);
+                QuietLog.LogHandledException(e);
+
+                // Database was unavailable and we don't have a version, return a 503
+                return new HttpStatusCodeWithBodyResult(HttpStatusCode.ServiceUnavailable, Strings.DatabaseUnavailable_TrySpecificVersion);
+            }
+            catch (DataException e)
+            {
+                QuietLog.LogHandledException(e);
+
+                // Database was unavailable and we don't have a version, return a 503
+                return new HttpStatusCodeWithBodyResult(HttpStatusCode.ServiceUnavailable, Strings.DatabaseUnavailable_TrySpecificVersion);
             }
 
-            return await PackageFileService.CreateDownloadPackageActionResultAsync(
-                HttpContext.Request.Url,
-                id, version);
+            if (isSymbolPackage)
+            {
+                var latestSymbolPackage = package?
+                    .SymbolPackages
+                    .OrderByDescending(sp => sp.Created)
+                    .FirstOrDefault();
+
+                if (latestSymbolPackage == null || latestSymbolPackage.StatusKey != PackageStatus.Available)
+                {
+                    return new HttpStatusCodeWithBodyResult(HttpStatusCode.NotFound, string.Format(CultureInfo.CurrentCulture, Strings.SymbolsPackage_PackageNotAvailable, id, version));
+                }
+
+                return await SymbolPackageFileService.CreateDownloadSymbolPackageActionResultAsync(
+                    HttpContext.Request.Url,
+                    id, version);
+            }
+            else
+            {
+                if (ConfigurationService.Features.TrackPackageDownloadCountInLocalDatabase)
+                {
+                    await PackageService.IncrementDownloadCountAsync(id, version);
+                }
+
+                return await PackageFileService.CreateDownloadPackageActionResultAsync(
+                    HttpContext.Request.Url,
+                    id, version);
+            }
         }
 
         [HttpGet]
@@ -257,13 +308,13 @@ namespace NuGetGallery
         [ActionName("VerifyPackageKey")]
         public async virtual Task<ActionResult> VerifyPackageKeyAsync(string id, string version)
         {
-            var policyResult = await SecurityPolicyService.EvaluateUserPoliciesAsync(SecurityPolicyAction.PackageVerify, HttpContext);
+            var user = GetCurrentUser();
+            var policyResult = await SecurityPolicyService.EvaluateUserPoliciesAsync(SecurityPolicyAction.PackageVerify, user, HttpContext);
             if (!policyResult.Success)
             {
                 return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, policyResult.ErrorMessage);
             }
 
-            var user = GetCurrentUser();
             var credential = user.GetCurrentApiKeyCredential(User.Identity);
 
             var result = await VerifyPackageKeyInternalAsync(user, credential, id, version);
@@ -286,7 +337,7 @@ namespace NuGetGallery
             if (package == null)
             {
                 return new HttpStatusCodeWithBodyResult(
-                    HttpStatusCode.NotFound, String.Format(CultureInfo.CurrentCulture, Strings.PackageWithIdAndVersionNotFound, id, version));
+                    HttpStatusCode.NotFound, string.Format(CultureInfo.CurrentCulture, Strings.PackageWithIdAndVersionNotFound, id, version));
             }
 
             // Write an audit record
@@ -330,161 +381,54 @@ namespace NuGetGallery
             return CreatePackageInternal();
         }
 
-        private async Task<ActionResult> CreatePackageInternal()
+        [HttpPut]
+        [ApiAuthorize]
+        [ApiScopeRequired(NuGetScopes.PackagePush, NuGetScopes.PackagePushVersion)]
+        [ActionName("PushSymbolPackageApi")]
+        public virtual async Task<ActionResult> CreateSymbolPackagePutAsync()
         {
-            var policyResult = await SecurityPolicyService.EvaluateUserPoliciesAsync(SecurityPolicyAction.PackagePush, HttpContext);
-            if (!policyResult.Success)
+            string id = null;
+            string normalizedVersion = null;
+            try
             {
-                return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, policyResult.ErrorMessage);
-            }
-
-            // Get the user
-            var currentUser = GetCurrentUser();
-
-            using (var packageStream = ReadPackageFromRequest())
-            {
-                try
+                // Read symbol package
+                using (var symbolPackageStream = ReadPackageFromRequest())
                 {
-                    using (var archive = new ZipArchive(packageStream, ZipArchiveMode.Read, leaveOpen: true))
+                    try
                     {
-                        var reference = DateTime.UtcNow.AddDays(1); // allow "some" clock skew
-
-                        var entryInTheFuture = archive.Entries.FirstOrDefault(
-                            e => e.LastWriteTime.UtcDateTime > reference);
-
-                        if (entryInTheFuture != null)
+                        // Get the user
+                        var currentUser = GetCurrentUser();
+                        var symbolsPackageValidationResult = await SymbolPackageUploadService.ValidateUploadedSymbolsPackage(symbolPackageStream, currentUser);
+                        var validationResult = GetActionOrNull(symbolsPackageValidationResult);
+                        if (validationResult != null)
                         {
-                            return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, string.Format(
-                               CultureInfo.CurrentCulture,
-                               Strings.PackageEntryFromTheFuture,
-                               entryInTheFuture.Name));
-                        }
-                    }
-
-                    using (var packageToPush = new PackageArchiveReader(packageStream, leaveStreamOpen: false))
-                    {
-                        try
-                        {
-                            PackageService.EnsureValid(packageToPush);
-                        }
-                        catch (Exception ex)
-                        {
-                            ex.Log();
-
-                            var message = Strings.FailedToReadUploadFile;
-                            if (ex is InvalidPackageException || ex is InvalidDataException || ex is EntityException)
-                            {
-                                message = ex.Message;
-                            }
-
-                            return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, message);
+                            return validationResult;
                         }
 
-                        NuspecReader nuspec;
-                        var errors = ManifestValidator.Validate(packageToPush.GetNuspec(), out nuspec).ToArray();
-                        if (errors.Length > 0)
+                        var package = symbolsPackageValidationResult.Package;
+                        id = package.PackageRegistration.Id;
+                        normalizedVersion = package.NormalizedVersion;
+
+                        // Check if this user has the permissions to push the corresponding symbol package
+                        var apiScopeEvaluationResult = EvaluateApiScope(ActionsRequiringPermissions.UploadSymbolPackage,
+                            package.PackageRegistration,
+                            NuGetScopes.PackagePushVersion,
+                            NuGetScopes.PackagePush);
+                        if (!apiScopeEvaluationResult.IsSuccessful())
                         {
-                            var errorsString = string.Join("', '", errors.Select(error => error.ErrorMessage));
-                            return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, string.Format(
-                                CultureInfo.CurrentCulture,
-                                errors.Length > 1 ? Strings.UploadPackage_InvalidNuspecMultiple : Strings.UploadPackage_InvalidNuspec,
-                                errorsString));
+                            await AuditingService.SaveAuditRecordAsync(
+                                new FailedAuthenticatedOperationAuditRecord(
+                                    currentUser.Username,
+                                    AuditedAuthenticatedOperationAction.SymbolsPackagePushAttemptByNonOwner,
+                                    attemptedPackage: new AuditedPackageIdentifier(
+                                        id, package.Version)));
+
+                            // User cannot push a symbol package as the current user's scopes does not allow it to push for the corresponding package.
+                            return GetHttpResultFromFailedApiScopeEvaluationForPush(apiScopeEvaluationResult, id, package.NormalizedVersion);
                         }
 
-                        if (nuspec.GetMinClientVersion() > Constants.MaxSupportedMinClientVersion)
-                        {
-                            return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, string.Format(
-                                CultureInfo.CurrentCulture,
-                                Strings.UploadPackage_MinClientVersionOutOfRange,
-                                nuspec.GetMinClientVersion()));
-                        }
-
-                        User owner;
-
-                        // Ensure that the user can push packages for this partialId.
-                        var id = nuspec.GetId();
-                        var version = nuspec.GetVersion();
-                        var packageRegistration = PackageService.FindPackageRegistrationById(id);
-                        if (packageRegistration == null)
-                        {
-                            // Check if the current user's scopes allow pushing a new package ID
-                            var apiScopeEvaluationResult = EvaluateApiScope(ActionsRequiringPermissions.UploadNewPackageId, new ActionOnNewPackageContext(id, ReservedNamespaceService), NuGetScopes.PackagePush);
-                            owner = apiScopeEvaluationResult.Owner;
-                            if (!apiScopeEvaluationResult.IsSuccessful())
-                            {
-                                // User cannot push a new package ID as the current user's scopes does not allow it
-                                return GetHttpResultFromFailedApiScopeEvaluationForPush(apiScopeEvaluationResult, id, version);
-                            }
-                        }
-                        else
-                        {
-                            // Check if the current user's scopes allow pushing a new version of an existing package ID
-                            var apiScopeEvaluationResult = EvaluateApiScope(ActionsRequiringPermissions.UploadNewPackageVersion, packageRegistration, NuGetScopes.PackagePushVersion, NuGetScopes.PackagePush);
-                            owner = apiScopeEvaluationResult.Owner;
-                            if (!apiScopeEvaluationResult.IsSuccessful())
-                            {
-                                // User cannot push a package as the current user's scopes does not allow it
-                                await AuditingService.SaveAuditRecordAsync(
-                                    new FailedAuthenticatedOperationAuditRecord(
-                                        currentUser.Username,
-                                        AuditedAuthenticatedOperationAction.PackagePushAttemptByNonOwner,
-                                        attemptedPackage: new AuditedPackageIdentifier(
-                                            id, version.ToNormalizedStringSafe())));
-
-                                return GetHttpResultFromFailedApiScopeEvaluationForPush(apiScopeEvaluationResult, id, version);
-                            }
-
-                            if (packageRegistration.IsLocked)
-                            {
-                                return new HttpStatusCodeWithBodyResult(
-                                    HttpStatusCode.Forbidden,
-                                    string.Format(CultureInfo.CurrentCulture, Strings.PackageIsLocked, packageRegistration.Id));
-                            }
-
-                            // Check if a particular Id-Version combination already exists. We eventually need to remove this check.
-                            string normalizedVersion = version.ToNormalizedString();
-                            bool packageExists =
-                                packageRegistration.Packages.Any(
-                                    p => string.Equals(
-                                        p.NormalizedVersion,
-                                        normalizedVersion,
-                                        StringComparison.OrdinalIgnoreCase));
-
-                            if (packageExists)
-                            {
-                                return new HttpStatusCodeWithBodyResult(
-                                    HttpStatusCode.Conflict,
-                                    string.Format(CultureInfo.CurrentCulture, Strings.PackageExistsAndCannotBeModified,
-                                        id, nuspec.GetVersion().ToNormalizedStringSafe()));
-                            }
-                        }
-
-                        var packageStreamMetadata = new PackageStreamMetadata
-                        {
-                            HashAlgorithm = CoreConstants.Sha512HashAlgorithmId,
-                            Hash = CryptographyService.GenerateHash(
-                                packageStream.AsSeekableStream(),
-                                CoreConstants.Sha512HashAlgorithmId),
-                            Size = packageStream.Length
-                        };
-
-                        var package = await PackageUploadService.GeneratePackageAsync(
-                            id,
-                            packageToPush,
-                            packageStreamMetadata,
-                            owner,
-                            currentUser);
-
-                        await AutoCuratePackage.ExecuteAsync(package, packageToPush, commitChanges: false);
-
-                        PackageCommitResult commitResult;
-                        using (Stream uploadStream = packageStream)
-                        {
-                            uploadStream.Position = 0;
-                            commitResult = await PackageUploadService.CommitPackageAsync(
-                                package,
-                                uploadStream.AsSeekableStream());
-                        }
+                        PackageCommitResult commitResult = await SymbolPackageUploadService
+                            .CreateAndUploadSymbolsPackage(package, symbolPackageStream);
 
                         switch (commitResult)
                         {
@@ -493,52 +437,330 @@ namespace NuGetGallery
                             case PackageCommitResult.Conflict:
                                 return new HttpStatusCodeWithBodyResult(
                                     HttpStatusCode.Conflict,
-                                    Strings.UploadPackage_IdVersionConflict);
+                                    Strings.SymbolsPackage_ConflictValidating);
                             default:
-                                throw new NotImplementedException($"The package commit result {commitResult} is not supported.");
+                                throw new NotImplementedException($"The symbols package commit result {commitResult} is not supported.");
                         }
 
-                        IndexingService.UpdatePackage(package);
-
-                        // Write an audit record
                         await AuditingService.SaveAuditRecordAsync(
-                            new PackageAuditRecord(package, AuditedPackageAction.Create, PackageCreatedVia.Api));
-
-                        if (!(ConfigurationService.Current.AsynchronousPackageValidationEnabled && ConfigurationService.Current.BlockingAsynchronousPackageValidationEnabled))
-                        {
-                            // Notify user of push unless async validation in blocking mode is used
-                            MessageService.SendPackageAddedNotice(package,
-                                Url.Package(package.PackageRegistration.Id, package.NormalizedVersion, relativeUrl: false),
-                                Url.ReportPackage(package.PackageRegistration.Id, package.NormalizedVersion, relativeUrl: false),
-                                Url.AccountSettings(relativeUrl: false));
-                        }
-
-                        TelemetryService.TrackPackagePushEvent(package, currentUser, User.Identity);
-
-                        if (package.SemVerLevelKey == SemVerLevelKey.SemVer2)
-                        {
-                            return new HttpStatusCodeWithServerWarningResult(HttpStatusCode.Created, Strings.WarningSemVer2PackagePushed);
-                        }
+                            new PackageAuditRecord(package, AuditedPackageAction.SymbolsCreate, PackageCreatedVia.Api));
 
                         return new HttpStatusCodeResult(HttpStatusCode.Created);
                     }
+                    catch (Exception ex) when (ex is InvalidPackageException
+                        || ex is InvalidDataException
+                        || ex is EntityException
+                        || ex is FrameworkException)
+                    {
+                        return BadRequestForExceptionMessage(ex);
+                    }
                 }
-                catch (InvalidPackageException ex)
+            }
+            catch (HttpException ex) when (ex.IsMaxRequestLengthExceeded())
+            {
+                // ASP.NET throws HttpException when maxRequestLength limit is exceeded.
+                return new HttpStatusCodeWithBodyResult(
+                    HttpStatusCode.RequestEntityTooLarge,
+                    Strings.PackageFileTooLarge);
+            }
+            catch (Exception ex)
+            {
+                ex.Log();
+                TelemetryService.TrackSymbolPackagePushFailureEvent(id, normalizedVersion);
+                throw ex;
+            }
+        }
+
+        private async Task<ActionResult> CreatePackageInternal()
+        {
+            string id = null;
+            NuGetVersion version = null;
+
+            try
+            {
+                var securityPolicyAction = SecurityPolicyAction.PackagePush;
+
+                // Get the user
+                var currentUser = GetCurrentUser();
+
+                var policyResult = await SecurityPolicyService.EvaluateUserPoliciesAsync(securityPolicyAction, currentUser, HttpContext);
+                if (!policyResult.Success)
                 {
-                    return BadRequestForExceptionMessage(ex);
+                    return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, policyResult.ErrorMessage);
                 }
-                catch (InvalidDataException ex)
+
+                using (var packageStream = ReadPackageFromRequest())
                 {
-                    return BadRequestForExceptionMessage(ex);
+                    try
+                    {
+                        if (ZipArchiveHelpers.FoundEntryInFuture(packageStream, out ZipArchiveEntry entryInTheFuture))
+                        {
+                            return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, string.Format(
+                                CultureInfo.CurrentCulture,
+                                Strings.PackageEntryFromTheFuture,
+                                entryInTheFuture.Name));
+                        }
+
+                        using (var packageToPush = new PackageArchiveReader(packageStream, leaveStreamOpen: false))
+                        {
+                            try
+                            {
+                                await PackageService.EnsureValid(packageToPush);
+                            }
+                            catch (Exception ex)
+                            {
+                                ex.Log();
+
+                                var message = Strings.FailedToReadUploadFile;
+                                if (ex is InvalidPackageException || ex is InvalidDataException || ex is EntityException)
+                                {
+                                    message = ex.Message;
+                                }
+
+                                return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, message);
+                            }
+
+                            NuspecReader nuspec;
+                            PackageMetadata packageMetadata;
+                            var errors = ManifestValidator.Validate(packageToPush.GetNuspec(), out nuspec, out packageMetadata).ToArray();
+                            if (errors.Length > 0)
+                            {
+                                var errorsString = string.Join("', '", errors.Select(error => error.ErrorMessage));
+                                return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, string.Format(
+                                    CultureInfo.CurrentCulture,
+                                    errors.Length > 1 ? Strings.UploadPackage_InvalidNuspecMultiple : Strings.UploadPackage_InvalidNuspec,
+                                    errorsString));
+                            }
+
+                            if (nuspec.GetMinClientVersion() > Constants.MaxSupportedMinClientVersion)
+                            {
+                                return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, string.Format(
+                                    CultureInfo.CurrentCulture,
+                                    Strings.UploadPackage_MinClientVersionOutOfRange,
+                                    nuspec.GetMinClientVersion()));
+                            }
+
+                            User owner;
+
+                            // Ensure that the user can push packages for this partialId.
+                            id = nuspec.GetId();
+                            version = nuspec.GetVersion();
+                            var packageRegistration = PackageService.FindPackageRegistrationById(id);
+                            if (packageRegistration == null)
+                            {
+                                // Check if the current user's scopes allow pushing a new package ID
+                                var apiScopeEvaluationResult = EvaluateApiScope(ActionsRequiringPermissions.UploadNewPackageId, new ActionOnNewPackageContext(id, ReservedNamespaceService), NuGetScopes.PackagePush);
+                                owner = apiScopeEvaluationResult.Owner;
+                                if (!apiScopeEvaluationResult.IsSuccessful())
+                                {
+                                    // User cannot push a new package ID as the current user's scopes does not allow it
+                                    return GetHttpResultFromFailedApiScopeEvaluationForPush(apiScopeEvaluationResult, id, version.ToNormalizedString());
+                                }
+                            }
+                            else
+                            {
+                                // Check if the current user's scopes allow pushing a new version of an existing package ID
+                                var apiScopeEvaluationResult = EvaluateApiScope(ActionsRequiringPermissions.UploadNewPackageVersion, packageRegistration, NuGetScopes.PackagePushVersion, NuGetScopes.PackagePush);
+                                owner = apiScopeEvaluationResult.Owner;
+                                if (!apiScopeEvaluationResult.IsSuccessful())
+                                {
+                                    // User cannot push a package as the current user's scopes does not allow it
+                                    await AuditingService.SaveAuditRecordAsync(
+                                        new FailedAuthenticatedOperationAuditRecord(
+                                            currentUser.Username,
+                                            AuditedAuthenticatedOperationAction.PackagePushAttemptByNonOwner,
+                                            attemptedPackage: new AuditedPackageIdentifier(
+                                                id, version.ToNormalizedStringSafe())));
+
+                                    return GetHttpResultFromFailedApiScopeEvaluationForPush(apiScopeEvaluationResult, id, version.ToNormalizedString());
+                                }
+
+                                if (packageRegistration.IsLocked)
+                                {
+                                    return new HttpStatusCodeWithBodyResult(
+                                        HttpStatusCode.Forbidden,
+                                        string.Format(CultureInfo.CurrentCulture, Strings.PackageIsLocked, packageRegistration.Id));
+                                }
+
+                                var existingPackage = PackageService.FindPackageByIdAndVersionStrict(id, version.ToStringSafe());
+                                if (existingPackage != null)
+                                {
+                                    if (existingPackage.PackageStatusKey == PackageStatus.FailedValidation)
+                                    {
+                                        TelemetryService.TrackPackageReupload(existingPackage);
+
+                                        await PackageDeleteService.HardDeletePackagesAsync(
+                                            new[] { existingPackage },
+                                            currentUser,
+                                            Strings.FailedValidationHardDeleteReason,
+                                            Strings.AutomatedPackageDeleteSignature,
+                                            deleteEmptyPackageRegistration: false);
+                                    }
+                                    else
+                                    {
+                                        return new HttpStatusCodeWithBodyResult(
+                                            HttpStatusCode.Conflict,
+                                            string.Format(CultureInfo.CurrentCulture, Strings.PackageExistsAndCannotBeModified,
+                                                id, version.ToNormalizedStringSafe()));
+                                    }
+                                }
+                            }
+
+                            // Perform all the validations we can before adding the package to the entity context.
+                            var beforeValidationResult = await PackageUploadService.ValidateBeforeGeneratePackageAsync(packageToPush, packageMetadata);
+                            var beforeValidationActionResult = GetActionResultOrNull(beforeValidationResult);
+                            if (beforeValidationActionResult != null)
+                            {
+                                return beforeValidationActionResult;
+                            }
+
+                            var packageStreamMetadata = new PackageStreamMetadata
+                            {
+                                HashAlgorithm = CoreConstants.Sha512HashAlgorithmId,
+                                Hash = CryptographyService.GenerateHash(
+                                    packageStream.AsSeekableStream(),
+                                    CoreConstants.Sha512HashAlgorithmId),
+                                Size = packageStream.Length
+                            };
+
+                            var package = await PackageUploadService.GeneratePackageAsync(
+                                id,
+                                packageToPush,
+                                packageStreamMetadata,
+                                owner,
+                                currentUser);
+                                
+                            var packagePolicyResult = await SecurityPolicyService.EvaluatePackagePoliciesAsync(
+                                securityPolicyAction,
+                                package,
+                                currentUser,
+                                owner,
+                                HttpContext);
+
+                            if (!packagePolicyResult.Success)
+                            {
+                                return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, packagePolicyResult.ErrorMessage);
+                            }
+
+                            // Perform validations that require the package already being in the entity context.
+                            var afterValidationResult = await PackageUploadService.ValidateAfterGeneratePackageAsync(
+                                package,
+                                packageToPush,
+                                owner,
+                                currentUser,
+                                isNewPackageRegistration: packageRegistration == null);
+
+                            var afterValidationActionResult = GetActionResultOrNull(afterValidationResult);
+                            if (afterValidationActionResult != null)
+                            {
+                                return afterValidationActionResult;
+                            }
+
+                            await AutoCuratePackage.ExecuteAsync(package, packageToPush, commitChanges: false);
+
+                            PackageCommitResult commitResult;
+                            using (Stream uploadStream = packageStream)
+                            {
+                                uploadStream.Position = 0;
+                                commitResult = await PackageUploadService.CommitPackageAsync(
+                                    package,
+                                    uploadStream.AsSeekableStream());
+                            }
+
+                            switch (commitResult)
+                            {
+                                case PackageCommitResult.Success:
+                                    break;
+                                case PackageCommitResult.Conflict:
+                                    return new HttpStatusCodeWithBodyResult(
+                                        HttpStatusCode.Conflict,
+                                        Strings.UploadPackage_IdVersionConflict);
+                                default:
+                                    throw new NotImplementedException($"The package commit result {commitResult} is not supported.");
+                            }
+
+                            IndexingService.UpdatePackage(package);
+
+                            // Write an audit record
+                            await AuditingService.SaveAuditRecordAsync(
+                                new PackageAuditRecord(package, AuditedPackageAction.Create, PackageCreatedVia.Api));
+
+                            if (!(ConfigurationService.Current.AsynchronousPackageValidationEnabled && ConfigurationService.Current.BlockingAsynchronousPackageValidationEnabled))
+                            {
+                                // Notify user of push unless async validation in blocking mode is used
+                                await MessageService.SendPackageAddedNoticeAsync(package,
+                                    Url.Package(package.PackageRegistration.Id, package.NormalizedVersion, relativeUrl: false),
+                                    Url.ReportPackage(package.PackageRegistration.Id, package.NormalizedVersion, relativeUrl: false),
+                                    Url.AccountSettings(relativeUrl: false),
+                                    packagePolicyResult.WarningMessages);
+                            }
+                            // Emit warning messages if any
+                            else if (packagePolicyResult.HasWarnings)
+                            {
+                                // Notify user of push unless async validation in blocking mode is used
+                                await MessageService.SendPackageAddedWithWarningsNoticeAsync(package,
+                                    Url.Package(package.PackageRegistration.Id, package.NormalizedVersion, relativeUrl: false),
+                                    Url.ReportPackage(package.PackageRegistration.Id, package.NormalizedVersion, relativeUrl: false),
+                                    packagePolicyResult.WarningMessages);
+                            }
+
+                            TelemetryService.TrackPackagePushEvent(package, currentUser, User.Identity);
+
+                            var warnings = new List<string>();
+                            warnings.AddRange(beforeValidationResult.Warnings);
+                            warnings.AddRange(afterValidationResult.Warnings);
+                            if (package.SemVerLevelKey == SemVerLevelKey.SemVer2)
+                            {
+                                warnings.Add(Strings.WarningSemVer2PackagePushed);
+                            }
+
+                            return new HttpStatusCodeWithServerWarningResult(HttpStatusCode.Created, warnings);
+                        }
+                    }
+                    catch (InvalidPackageException ex)
+                    {
+                        return BadRequestForExceptionMessage(ex);
+                    }
+                    catch (InvalidDataException ex)
+                    {
+                        return BadRequestForExceptionMessage(ex);
+                    }
+                    catch (EntityException ex)
+                    {
+                        return BadRequestForExceptionMessage(ex);
+                    }
+                    catch (FrameworkException ex)
+                    {
+                        return BadRequestForExceptionMessage(ex);
+                    }
                 }
-                catch (EntityException ex)
-                {
-                    return BadRequestForExceptionMessage(ex);
-                }
-                catch (FrameworkException ex)
-                {
-                    return BadRequestForExceptionMessage(ex);
-                }
+            }
+            catch (HttpException ex) when (ex.IsMaxRequestLengthExceeded())
+            {
+                // ASP.NET throws HttpException when maxRequestLength limit is exceeded.
+                return new HttpStatusCodeWithBodyResult(
+                    HttpStatusCode.RequestEntityTooLarge,
+                    Strings.PackageFileTooLarge);
+            }
+            catch (Exception)
+            {
+                TelemetryService.TrackPackagePushFailureEvent(id, version);
+                throw;
+            }
+        }
+
+        private static ActionResult GetActionResultOrNull(PackageValidationResult validationResult)
+        {
+            switch (validationResult.Type)
+            {
+                case PackageValidationResultType.Accepted:
+                    return null;
+                case PackageValidationResultType.Invalid:
+                case PackageValidationResultType.PackageShouldNotBeSigned:
+                case PackageValidationResultType.PackageShouldNotBeSignedButCanManageCertificates:
+                    return new HttpStatusCodeWithBodyResult(HttpStatusCode.BadRequest, validationResult.Message);
+                default:
+                    throw new NotImplementedException($"The package validation result type {validationResult.Type} is not supported.");
             }
         }
 
@@ -559,7 +781,7 @@ namespace NuGetGallery
             if (package == null)
             {
                 return new HttpStatusCodeWithBodyResult(
-                    HttpStatusCode.NotFound, String.Format(CultureInfo.CurrentCulture, Strings.PackageWithIdAndVersionNotFound, id, version));
+                    HttpStatusCode.NotFound, string.Format(CultureInfo.CurrentCulture, Strings.PackageWithIdAndVersionNotFound, id, version));
             }
 
             // Check if the current user's scopes allow listing/unlisting the current package ID
@@ -591,7 +813,7 @@ namespace NuGetGallery
             if (package == null)
             {
                 return new HttpStatusCodeWithBodyResult(
-                    HttpStatusCode.NotFound, String.Format(CultureInfo.CurrentCulture, Strings.PackageWithIdAndVersionNotFound, id, version));
+                    HttpStatusCode.NotFound, string.Format(CultureInfo.CurrentCulture, Strings.PackageWithIdAndVersionNotFound, id, version));
             }
 
             // Check if the current user's scopes allow listing/unlisting the current package ID
@@ -743,26 +965,21 @@ namespace NuGetGallery
             return new HttpStatusCodeResult(HttpStatusCode.NotFound);
         }
 
-        private HttpStatusCodeWithBodyResult GetHttpResultFromFailedApiScopeEvaluation(ApiScopeEvaluationResult evaluationResult, string id, string version)
+        private HttpStatusCodeWithBodyResult GetHttpResultFromFailedApiScopeEvaluation(ApiScopeEvaluationResult evaluationResult, string id, string versionString)
         {
-            return GetHttpResultFromFailedApiScopeEvaluation(evaluationResult, id, NuGetVersion.Parse(version));
-        }
-
-        private HttpStatusCodeWithBodyResult GetHttpResultFromFailedApiScopeEvaluation(ApiScopeEvaluationResult result, string id, NuGetVersion version)
-        {
-            return GetHttpResultFromFailedApiScopeEvaluationHelper(result, id, version, HttpStatusCode.Forbidden);
+            return GetHttpResultFromFailedApiScopeEvaluationHelper(evaluationResult, id, versionString, HttpStatusCode.Forbidden);
         }
 
         /// <remarks>
         /// Push returns <see cref="HttpStatusCode.Unauthorized"/> instead of <see cref="HttpStatusCode.Forbidden"/> for failures not related to reserved namespaces.
         /// This is inconsistent with both the rest of our API and the HTTP standard, but it is an existing behavior that we must support.
         /// </remarks>
-        private HttpStatusCodeWithBodyResult GetHttpResultFromFailedApiScopeEvaluationForPush(ApiScopeEvaluationResult result, string id, NuGetVersion version)
+        private HttpStatusCodeWithBodyResult GetHttpResultFromFailedApiScopeEvaluationForPush(ApiScopeEvaluationResult result, string id, string normalizedVersion)
         {
-            return GetHttpResultFromFailedApiScopeEvaluationHelper(result, id, version, HttpStatusCode.Unauthorized);
+            return GetHttpResultFromFailedApiScopeEvaluationHelper(result, id, normalizedVersion, HttpStatusCode.Unauthorized);
         }
 
-        private HttpStatusCodeWithBodyResult GetHttpResultFromFailedApiScopeEvaluationHelper(ApiScopeEvaluationResult result, string id, NuGetVersion version, HttpStatusCode statusCodeOnFailure)
+        private HttpStatusCodeWithBodyResult GetHttpResultFromFailedApiScopeEvaluationHelper(ApiScopeEvaluationResult result, string id, string versionString, HttpStatusCode statusCodeOnFailure)
         {
             if (result.IsSuccessful())
             {
@@ -772,11 +989,11 @@ namespace NuGetGallery
             if (result.PermissionsCheckResult == PermissionsCheckResult.ReservedNamespaceFailure)
             {
                 // We return a special error code for reserved namespace failures.
-                TelemetryService.TrackPackagePushNamespaceConflictEvent(id, version.ToNormalizedString(), GetCurrentUser(), User.Identity);
+                TelemetryService.TrackPackagePushNamespaceConflictEvent(id, versionString, GetCurrentUser(), User.Identity);
                 return new HttpStatusCodeWithBodyResult(HttpStatusCode.Conflict, Strings.UploadPackage_IdNamespaceConflict);
             }
-            
-            var message = result.PermissionsCheckResult == PermissionsCheckResult.Allowed && !result.IsOwnerConfirmed ? 
+
+            var message = result.PermissionsCheckResult == PermissionsCheckResult.Allowed && !result.IsOwnerConfirmed ?
                 Strings.ApiKeyOwnerUnconfirmed : Strings.ApiKeyNotAuthorized;
 
             return new HttpStatusCodeWithBodyResult(statusCodeOnFailure, message);
@@ -800,6 +1017,32 @@ namespace NuGetGallery
                 action,
                 context,
                 requestedActions);
+        }
+
+        private static ActionResult GetActionOrNull(SymbolPackageValidationResult validationResult)
+        {
+            HttpStatusCode httpStatusCode;
+            switch (validationResult.Type)
+            {
+                case SymbolPackageValidationResultType.Accepted:
+                    return null;
+                case SymbolPackageValidationResultType.Invalid:
+                    httpStatusCode = HttpStatusCode.BadRequest;
+                    break;
+                case SymbolPackageValidationResultType.MissingPackage:
+                    httpStatusCode = HttpStatusCode.NotFound;
+                    break;
+                case SymbolPackageValidationResultType.SymbolsPackagePendingValidation:
+                    httpStatusCode = HttpStatusCode.Conflict;
+                    break;
+                case SymbolPackageValidationResultType.UserNotAllowedToUpload:
+                    httpStatusCode = HttpStatusCode.Unauthorized;
+                    break;
+                default:
+                    throw new NotImplementedException($"The symbol package validation result type {validationResult.Type} is not supported.");
+            }
+
+            return new HttpStatusCodeWithBodyResult(httpStatusCode, validationResult.Message);
         }
     }
 }

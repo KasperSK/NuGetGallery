@@ -2,7 +2,6 @@
 @{
     ViewBag.Title = "Manage Owners for Package " + Model.Id;
     ViewBag.Tab = "Packages";
-    Layout = "~/Views/Shared/Gallery/Layout.cshtml";
 }
 
 <section role="main" class="container main-container page-manage-owners">
@@ -37,7 +36,7 @@
                     <div class="col-md-1">
                         <img width="@Constants.GravatarElementSize"
                              height="@Constants.GravatarElementSize"
-                             data-bind="attr:{src: imageUrl}" />
+                             data-bind="attr: { src: imageUrl, 'aria-label': 'Profile picture for ' + name() }" />
                     </div>
                     <div class="col-md-8 ms-font-xl">
                         <span>

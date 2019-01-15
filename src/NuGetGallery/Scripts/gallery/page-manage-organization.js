@@ -7,32 +7,6 @@
             data["__RequestVerificationToken"] = $field.val();
         }
 
-        var configureSection = function (prefix) {
-            var containerId = prefix + "-container";
-            $("#cancel-" + prefix).click(function (e) {
-                // Collapse the container.
-                $("#" + containerId).collapse('hide');
-
-                // Prevent navigation.
-                e.preventDefault();
-
-                // Reset the form.
-                var formElement = $("#" + containerId + " form")[0];
-                if (formElement) {
-                    formElement.reset();
-                }
-
-                // Clear values.
-                $("#" + containerId + " input[type='text']").val("");
-                $("#" + containerId + " input[type='password']").val("");
-
-                // Reset the validation state.
-                if (formElement) {
-                    window.nuget.resetFormValidation(formElement);
-                }
-            });
-        }
-
         function OrganizationMemberViewModel(parent, member) {
             var self = this;
 
@@ -251,14 +225,10 @@
             };
         }
 
-        // Set up the section expanders.
-        for (var i in sections) {
-            configureSection(sections[i]);
-        }
-
         // Set up the data binding.
         var manageOrganizationViewModel = new ManageOrganizationViewModel(initialData);
-        ko.applyBindings(manageOrganizationViewModel, document.body);
+        var manageOrganizationMembersContainer = $('#manage-organization-members-container');
+        ko.applyBindings(manageOrganizationViewModel, manageOrganizationMembersContainer[0]);
 
         // Set up the Add Member textbox to submit upon pressing enter.
         var newMemberTextbox = $("#new-member-textbox");
